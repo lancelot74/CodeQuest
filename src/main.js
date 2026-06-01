@@ -6,6 +6,7 @@ import MainMenuScene from './scenes/MainMenu.js'
 import CharacterSelectScene from './scenes/CharacterSelect.js'
 import WorldSelectScene from './scenes/WorldSelect.js'
 import LevelSelectScene from './scenes/LevelSelect.js'
+import GameScene from './scenes/Game.js'
 import CodexScene from './scenes/Codex.js'
 
 new Phaser.Game(
@@ -16,6 +17,7 @@ new Phaser.Game(
     CharacterSelectScene,
     WorldSelectScene,
     LevelSelectScene,
+    GameScene,
     CodexScene,
   ]),
 )
