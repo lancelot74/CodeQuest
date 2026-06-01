@@ -7,6 +7,7 @@ import Slime from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { pixelText } from '../ui/widgets.js'
+import { showLessonCard } from '../ui/domOverlay.js'
 
 const XP_PER_SLIME = 8
 
@@ -113,15 +114,23 @@ export default class GameScene extends Phaser.Scene {
   clearLevel() {
     this.cleared = true
     this.player.freeze()
+
+    const lessonId = this.level.lessonId
     SaveSystem.markLevelCleared(this.levelId)
+    if (lessonId) SaveSystem.unlockLesson(lessonId)
+    const lesson = lessonId ? new ContentLoader(this).lesson(lessonId) : null
+
     this.cameras.main.flash(180, 124, 252, 152)
     const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 12, 'LEVEL CLEAR', 18, '#7cfc98')
       .setScrollFactor(0)
       .setDepth(50)
     this.tweens.add({ targets: t, scale: { from: 0.6, to: 1 }, duration: 280, ease: 'Back.out' })
-    this.time.delayedCall(1500, () =>
-      this.scene.start('LevelSelect', { worldId: this.worldId }),
-    )
+
+    const toLevels = () => this.scene.start('LevelSelect', { worldId: this.worldId })
+    this.time.delayedCall(900, () => {
+      if (lesson) showLessonCard(lesson, toLevels)
+      else toLevels()
+    })
   }
 
   onEnemyDied() {
@@ -159,7 +168,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onTouchEnemy(player, enemy) {
-    if (player.dead || enemy.dead) return
+    if (this.cleared || player.dead || enemy.dead) return
     player.hit(enemy.contactDamage, enemy.x, this.time.now)
   }
 
