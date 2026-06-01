@@ -32,6 +32,10 @@ export default class PreloadScene extends Phaser.Scene {
     const ENEMY = { frameWidth: 64, frameHeight: 50 }
     this.load.spritesheet('ooze-walk', 'assets/game/enemies/ooze/walk.png', ENEMY)
     this.load.spritesheet('ooze-death', 'assets/game/enemies/ooze/death.png', ENEMY)
+    this.load.image('venom', 'assets/game/enemies/ooze/venom.png')
+
+    // Kenney pixel-adventure UI sheet (32px tiles, no spacing) for panels/buttons.
+    this.load.spritesheet('ui', 'assets/game/ui/kenney-ui.png', { frameWidth: 32, frameHeight: 32 })
     this.load.image('bg-green', 'assets/game/bg/green.png')
     this.load.image('bg-blue', 'assets/game/bg/blue.png')
     this.load.image('bg-gray', 'assets/game/bg/gray.png')

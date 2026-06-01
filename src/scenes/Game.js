@@ -53,6 +53,10 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.enemies, this.solids)
     this.physics.add.overlap(this.player, this.enemies, this.onTouchEnemy, undefined, this)
 
+    this.projectiles = this.physics.add.group()
+    this.physics.add.overlap(this.player, this.projectiles, this.onVenomHit, undefined, this)
+    this.physics.add.collider(this.projectiles, this.solids, (orb) => this.popVenom(orb))
+
     this.events.off('player-attack', this.onPlayerAttack, this)
     this.events.on('player-attack', this.onPlayerAttack, this)
     this.events.off('player-dead', this.onPlayerDead, this)
@@ -185,7 +189,32 @@ export default class GameScene extends Phaser.Scene {
 
   onTouchEnemy(player, enemy) {
     if (this.cleared || player.dead || enemy.dead) return
-    player.hit(enemy.contactDamage, enemy.x, this.time.now)
+    const dmg = enemy.lungeActive ? enemy.contactDamage + 6 : enemy.contactDamage
+    player.hit(dmg, enemy.x, this.time.now)
+  }
+
+  spawnVenom(x, y, targetX, targetY) {
+    const orb = this.projectiles.create(x, y, 'venom')
+    orb.setDepth(7).setTint(0x9be86a)
+    orb.body.setAllowGravity(false)
+    orb.body.setCircle(6, 3, 3)
+    const ang = Math.atan2(targetY - y, targetX - x)
+    const SPEED = 165
+    orb.setVelocity(Math.cos(ang) * SPEED, Math.sin(ang) * SPEED)
+    this.tweens.add({ targets: orb, angle: 360, duration: 700, repeat: -1 })
+    this.time.delayedCall(2600, () => orb.active && orb.destroy())
+  }
+
+  onVenomHit(player, orb) {
+    if (this.cleared || player.dead) return this.popVenom(orb)
+    player.hit(10, orb.x, this.time.now)
+    this.popVenom(orb)
+  }
+
+  popVenom(orb) {
+    if (!orb || !orb.active) return
+    CombatSystem.puff(this, orb.x, orb.y, 0x9be86a)
+    orb.destroy()
   }
 
   onPlayerAttack({ type, combo, x, y, facing }) {
@@ -296,12 +325,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   buildBackground() {
-    const bgKey = this.worldDef?.bg || 'bg-green'
+    const bgKey = this.worldDef?.bg || 'bg-blue'
+    const theme = TERRAIN_THEMES[this.worldId] || TERRAIN_THEMES.matlab
     this.bg = this.add
       .tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, bgKey)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-10)
+    if (theme.bgTint) this.bg.setTint(theme.bgTint)
   }
 
   buildTerrain() {
@@ -334,10 +365,14 @@ export default class GameScene extends Phaser.Scene {
         if (ch === '#') {
           const set = solid(c, r - 1) ? theme.fill : theme.top
           const frame = !solid(c - 1, r) ? set[0] : !solid(c + 1, r) ? set[2] : set[1]
-          this.solids.create(px, py, 'terrain', frame).refreshBody()
+          const block = this.solids.create(px, py, 'terrain', frame)
+          if (theme.tint) block.setTint(theme.tint)
+          block.refreshBody()
           this.solidSet.add(`${c},${r}`)
         } else if (ch === '=') {
-          this.oneways.create(px, py, 'terrain', theme.oneway).refreshBody()
+          const ledge = this.oneways.create(px, py, 'terrain', theme.oneway)
+          ledge.setTint(theme.onewayTint || theme.tint || 0xffffff)
+          ledge.refreshBody()
         } else if (ch === 'H') {
           this.add.image(px, py, 'ladder').setTint(theme.ladderTint).setDepth(2)
           this.ladderSet.add(`${c},${r}`)

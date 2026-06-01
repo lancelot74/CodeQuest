@@ -4,7 +4,7 @@
     "name": "MATLAB Marsh",
     "order": 1,
     "unlockedByDefault": true,
-    "bg": "bg-green",
+    "bg": "bg-blue",
     "slimeTint": "#67d46a",
     "boss": "ooze",
     "music": "world1",
