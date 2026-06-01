@@ -7,6 +7,7 @@ import CharacterSelectScene from './scenes/CharacterSelect.js'
 import WorldSelectScene from './scenes/WorldSelect.js'
 import LevelSelectScene from './scenes/LevelSelect.js'
 import GameScene from './scenes/Game.js'
+import GameOverScene from './scenes/GameOver.js'
 import CodexScene from './scenes/Codex.js'
 
 new Phaser.Game(
@@ -18,6 +19,7 @@ new Phaser.Game(
     WorldSelectScene,
     LevelSelectScene,
     GameScene,
+    GameOverScene,
     CodexScene,
   ]),
 )

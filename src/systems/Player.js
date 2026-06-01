@@ -1,10 +1,14 @@
 import Phaser from 'phaser'
+import { SaveSystem } from './SaveSystem.js'
+import { CombatSystem } from './CombatSystem.js'
 
 const SPEED = 165
 const JUMP_V = 430
 const COYOTE_MS = 80
 const BUFFER_MS = 120
 const MAX_JUMPS = 2
+const ATTACK_CD = 360
+const IFRAME_MS = 700
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, charKey) {
@@ -23,8 +27,15 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.facing = 1
     this.dead = false
 
+    const stats = SaveSystem.data.player
+    this.maxHp = stats.maxHp
+    this.hp = this.maxHp
+    this.attackPower = stats.attack
+    this.attackReadyAt = -1e9
+    this.invulnUntil = -1e9
+
     this.cursors = scene.input.keyboard.createCursorKeys()
-    this.keys = scene.input.keyboard.addKeys({ w: 'W', a: 'A', d: 'D' })
+    this.keys = scene.input.keyboard.addKeys({ w: 'W', a: 'A', d: 'D', j: 'J', x: 'X' })
 
     this.play(`${charKey}-idle`)
   }
@@ -73,7 +84,52 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.setVelocityY(this.body.velocity.y * 0.5)
     }
 
+    const attackPressed =
+      Phaser.Input.Keyboard.JustDown(this.keys.j) ||
+      Phaser.Input.Keyboard.JustDown(this.keys.x)
+    if (attackPressed) this.attack(time)
+
     this.animate(onGround)
+  }
+
+  attack(time) {
+    if (this.dead || time < this.attackReadyAt) return
+    this.attackReadyAt = time + ATTACK_CD
+    this.scene.events.emit('player-attack', { x: this.x, y: this.y, facing: this.facing })
+  }
+
+  hit(amount, fromX, time) {
+    if (this.dead || time < this.invulnUntil) return
+    this.hp = Math.max(0, this.hp - amount)
+    this.invulnUntil = time + IFRAME_MS
+    CombatSystem.floatingNumber(this.scene, this.x, this.y - 16, amount, { color: '#e06a6a' })
+
+    const away = this.x < fromX ? -1 : 1
+    this.setVelocityX(away * 160)
+    this.setVelocityY(-190)
+    this.play(`${this.charKey}-hit`, true)
+    this.scene.events.emit('player-hp', { hp: this.hp, maxHp: this.maxHp })
+
+    this.scene.tweens.add({
+      targets: this,
+      alpha: 0.35,
+      yoyo: true,
+      repeat: 5,
+      duration: 90,
+      onComplete: () => this.setAlpha(1),
+    })
+
+    if (this.hp <= 0) this.die()
+  }
+
+  die() {
+    if (this.dead) return
+    this.dead = true
+    this.setVelocity(0, -260)
+    this.body.checkCollision.none = true
+    this.play(`${this.charKey}-hit`, true)
+    this.scene.tweens.add({ targets: this, angle: 180, alpha: 0, duration: 750, ease: 'Quad.in' })
+    this.scene.events.emit('player-dead')
   }
 
   doJump(isDouble) {

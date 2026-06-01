@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { CHARACTERS } from '../utils/constants.js'
 import { createCharacterAnimations } from '../utils/anims.js'
+import { createPlaceholderTextures } from '../utils/textures.js'
 
 const SHEET = { frameWidth: 32, frameHeight: 32 }
 
@@ -38,6 +39,7 @@ export default class PreloadScene extends Phaser.Scene {
 
   create() {
     createCharacterAnimations(this)
+    createPlaceholderTextures(this)
     this.scene.start('MainMenu')
   }
 
