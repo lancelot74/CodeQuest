@@ -2,12 +2,20 @@ import Phaser from 'phaser'
 import { SaveSystem } from './SaveSystem.js'
 import { CombatSystem } from './CombatSystem.js'
 
-const SPEED = 165
+const MAX_SPEED = 170
+const ACCEL_GROUND = 1700
+const ACCEL_AIR = 620
+const DRAG_GROUND = 1900
+const DRAG_AIR = 150
 const JUMP_V = 430
 const COYOTE_MS = 80
 const BUFFER_MS = 120
 const MAX_JUMPS = 2
-const ATTACK_CD = 360
+const CD_SLASH = 260
+const CD_UP = 300
+const CD_DIVE = 360
+const CD_HEAVY = 580
+const COMBO_WINDOW = 520
 const IFRAME_MS = 700
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
@@ -19,6 +27,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setCollideWorldBounds(true)
     this.body.setSize(16, 24).setOffset(8, 8)
+    this.body.setMaxVelocity(MAX_SPEED, 1000)
+    this.setDragX(DRAG_GROUND)
     this.setDepth(10)
 
     this.lastGroundedAt = -1e9
@@ -27,6 +37,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.facing = 1
     this.dead = false
     this.controllable = true
+    this.comboCount = 0
+    this.comboExpireAt = -1e9
+    this.diving = false
+    this.jumpCutAvailable = false
 
     const stats = SaveSystem.data.player
     this.maxHp = stats.maxHp
@@ -36,7 +50,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.invulnUntil = -1e9
 
     this.cursors = scene.input.keyboard.createCursorKeys()
-    this.keys = scene.input.keyboard.addKeys({ w: 'W', a: 'A', d: 'D', j: 'J', x: 'X' })
+    this.keys = scene.input.keyboard.addKeys({ w: 'W', a: 'A', s: 'S', d: 'D', j: 'J', k: 'K', x: 'X' })
 
     this.play(`${charKey}-idle`)
   }
@@ -45,6 +59,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     super.preUpdate(time, delta)
     if (this.dead) return
     if (!this.controllable) {
+      this.setAccelerationX(0)
       this.setVelocityX(0)
       this.animate(this.body.blocked.down)
       return
@@ -54,21 +69,27 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (onGround) {
       this.lastGroundedAt = time
       this.jumpsUsed = 0
+      this.diving = false
+      this.jumpCutAvailable = false
     }
 
+    // Acceleration + drag give momentum: snappy on the ground, but in the air
+    // you can't instantly reverse or stop — you carry your speed and steer it.
     const left = this.cursors.left.isDown || this.keys.a.isDown
     const right = this.cursors.right.isDown || this.keys.d.isDown
+    const accel = onGround ? ACCEL_GROUND : ACCEL_AIR
     if (left && !right) {
-      this.setVelocityX(-SPEED)
+      this.setAccelerationX(-accel)
       this.facing = -1
       this.setFlipX(true)
     } else if (right && !left) {
-      this.setVelocityX(SPEED)
+      this.setAccelerationX(accel)
       this.facing = 1
       this.setFlipX(false)
     } else {
-      this.setVelocityX(0)
+      this.setAccelerationX(0)
     }
+    this.setDragX(onGround ? DRAG_GROUND : DRAG_AIR)
 
     const jumpPressed =
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
@@ -86,27 +107,72 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // Variable jump height: releasing while rising cuts the ascent.
     const jumpHeld =
       this.cursors.up.isDown || this.cursors.space.isDown || this.keys.w.isDown
-    if (!jumpHeld && this.body.velocity.y < 0) {
+    if (this.jumpCutAvailable && !jumpHeld && this.body.velocity.y < 0) {
       this.setVelocityY(this.body.velocity.y * 0.5)
     }
 
-    const attackPressed =
+    const lightPressed =
       Phaser.Input.Keyboard.JustDown(this.keys.j) ||
       Phaser.Input.Keyboard.JustDown(this.keys.x)
-    if (attackPressed) this.attack(time)
+    const heavyPressed = Phaser.Input.Keyboard.JustDown(this.keys.k)
+    if (heavyPressed) this.attack(time, 'heavy')
+    else if (lightPressed) this.attack(time, 'light')
 
     this.animate(onGround)
   }
 
   freeze() {
     this.controllable = false
+    this.setAccelerationX(0)
     this.setVelocityX(0)
   }
 
-  attack(time) {
+  attack(time, kind) {
     if (this.dead || time < this.attackReadyAt) return
-    this.attackReadyAt = time + ATTACK_CD
-    this.scene.events.emit('player-attack', { x: this.x, y: this.y, facing: this.facing })
+    const onGround = this.body.blocked.down
+    const down = this.cursors.down.isDown || this.keys.s.isDown
+    const up = this.cursors.up.isDown || this.keys.w.isDown
+
+    let type, cd
+    if (kind === 'heavy') {
+      type = 'heavy'
+      cd = CD_HEAVY
+    } else if (!onGround && down) {
+      type = 'dive'
+      cd = CD_DIVE
+    } else if (up) {
+      type = 'up'
+      cd = CD_UP
+    } else {
+      type = 'slash'
+      cd = CD_SLASH
+    }
+
+    let combo = 0
+    if (type === 'slash') {
+      this.comboCount = time < this.comboExpireAt ? this.comboCount + 1 : 1
+      if (this.comboCount > 3) this.comboCount = 1
+      this.comboExpireAt = time + COMBO_WINDOW
+      combo = this.comboCount
+    } else {
+      this.comboCount = 0
+    }
+
+    this.attackReadyAt = time + cd
+
+    if (type === 'heavy') this.setVelocityX(this.facing * 110)
+    else if (type === 'dive') {
+      this.setVelocityY(360)
+      this.diving = true
+    }
+
+    this.scene.events.emit('player-attack', {
+      type,
+      combo,
+      x: this.x,
+      y: this.y,
+      facing: this.facing,
+    })
   }
 
   hit(amount, fromX, time) {
@@ -136,6 +202,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   die() {
     if (this.dead) return
     this.dead = true
+    this.setAccelerationX(0)
     this.setVelocity(0, -260)
     this.body.checkCollision.none = true
     this.play(`${this.charKey}-hit`, true)
@@ -146,6 +213,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   doJump(isDouble) {
     this.setVelocityY(-JUMP_V)
     this.jumpsUsed = isDouble ? this.jumpsUsed + 1 : 1
+    this.jumpCutAvailable = true
     this.lastJumpAt = -1e9
     this.lastGroundedAt = -1e9
     if (isDouble) this.play(`${this.charKey}-doublejump`, true)

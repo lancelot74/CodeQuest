@@ -74,6 +74,28 @@ export default class GameScene extends Phaser.Scene {
 
     this.scene.launch('HUD')
     this.events.once('shutdown', () => this.scene.stop('HUD'))
+
+    this.showControlsHint()
+  }
+
+  showControlsHint() {
+    const t = pixelText(
+      this,
+      GAME_WIDTH / 2,
+      GAME_HEIGHT - 16,
+      'Move A/D   Jump W   Slash J   Up W+J   Dive S+J   Heavy K',
+      7,
+      '#aebbd6',
+    )
+      .setScrollFactor(0)
+      .setDepth(45)
+    this.tweens.add({
+      targets: t,
+      alpha: 0,
+      delay: 4200,
+      duration: 1000,
+      onComplete: () => t.destroy(),
+    })
   }
 
   setupObjective() {
@@ -172,34 +194,95 @@ export default class GameScene extends Phaser.Scene {
     player.hit(enemy.contactDamage, enemy.x, this.time.now)
   }
 
-  onPlayerAttack({ x, y, facing }) {
-    const cx = x + facing * 16
-    this.spawnSlashFx(cx, y, facing)
-    const rect = new Phaser.Geom.Rectangle(cx - 14, y - 14, 28, 28)
-    const base = this.player.attackPower + 8
+  onPlayerAttack({ type, combo, x, y, facing }) {
+    this.spawnSlashFx(type, x, y, facing)
+
+    const atk = this.player.attackPower
+    let rect
+    let base = atk + 8
+    let critChance = 0.15
+    let guaranteedCrit = false
+    let knock = 1
+
+    if (type === 'up') {
+      rect = new Phaser.Geom.Rectangle(x - 15, y - 34, 30, 32)
+    } else if (type === 'dive') {
+      rect = new Phaser.Geom.Rectangle(x - 16, y + 2, 32, 28)
+      base = atk + 10
+    } else if (type === 'heavy') {
+      const cx = x + facing * 20
+      rect = new Phaser.Geom.Rectangle(cx - 22, y - 15, 44, 30)
+      base = atk + 16
+      critChance = 0.25
+      knock = 1.9
+    } else {
+      const cx = x + facing * 16
+      rect = new Phaser.Geom.Rectangle(cx - 15, y - 13, 30, 26)
+      if (combo >= 3) {
+        base = Math.round(base * 1.6)
+        guaranteedCrit = true
+      }
+    }
+
+    let hitAny = false
     for (const enemy of this.enemies.getChildren()) {
       if (enemy.dead) continue
       if (Phaser.Geom.Intersects.RectangleToRectangle(rect, enemy.getBounds())) {
-        const { amount, isCrit } = CombatSystem.roll(base)
+        const { amount, isCrit } = CombatSystem.roll(base, { critChance, guaranteedCrit })
         enemy.hurt(amount, isCrit, this.player.x)
+        if (knock > 1 && !enemy.dead) {
+          const away = enemy.x < this.player.x ? -1 : 1
+          enemy.setVelocityX(away * 90 * knock)
+        }
+        hitAny = true
         if (isCrit) CombatSystem.shake(this)
       }
     }
+
+    if (type === 'dive' && hitAny) {
+      this.player.jumpCutAvailable = false
+      this.player.setVelocityY(-330)
+      this.player.diving = false
+      CombatSystem.shake(this, 0.005, 110)
+    }
+    if (type === 'heavy') CombatSystem.shake(this, 0.005, 110)
   }
 
-  spawnSlashFx(x, y, facing) {
+  spawnSlashFx(type, x, y, facing) {
+    let ox = x + facing * 16
+    let oy = y
+    let angle = 0
+    let scale = 0.6
+    let tint = 0xffe066
+    let flip = facing < 0
+    if (type === 'up') {
+      ox = x
+      oy = y - 18
+      angle = -90
+      flip = false
+    } else if (type === 'dive') {
+      ox = x
+      oy = y + 16
+      angle = 90
+      flip = false
+    } else if (type === 'heavy') {
+      ox = x + facing * 20
+      scale = 0.9
+      tint = 0xff9a3c
+    }
     const fx = this.add
-      .sprite(x, y, 'slash')
+      .sprite(ox, oy, 'slash')
       .setDepth(20)
-      .setTint(0xffe066)
-      .setFlipX(facing < 0)
-      .setScale(0.6)
+      .setTint(tint)
+      .setFlipX(flip)
+      .setAngle(angle)
+      .setScale(scale)
     this.tweens.add({
       targets: fx,
-      scaleX: 1.2,
-      scaleY: 1.2,
+      scaleX: scale * 2,
+      scaleY: scale * 2,
       alpha: 0,
-      duration: 170,
+      duration: type === 'heavy' ? 230 : 170,
       ease: 'Quad.out',
       onComplete: () => fx.destroy(),
     })
@@ -233,7 +316,9 @@ export default class GameScene extends Phaser.Scene {
     const cols = Math.max(...grid.map((r) => r.length))
     this.worldW = cols * TILE
     this.worldH = rows * TILE
-    this.physics.world.setBounds(0, 0, this.worldW, this.worldH)
+    // Extra room below the level so the player actually falls through pit gaps
+    // instead of being caught by the bottom world bound; falling = death (update()).
+    this.physics.world.setBounds(0, 0, this.worldW, this.worldH + 160)
 
     const theme = TERRAIN_THEMES[this.worldId] || TERRAIN_THEMES.matlab
     const at = (c, r) => (r >= 0 && r < rows && c >= 0 && c < grid[r].length ? grid[r][c] : ' ')
@@ -285,8 +370,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.bg) {
       this.bg.tilePositionX = this.cameras.main.scrollX * 0.3
     }
-    if (this.player && !this.player.dead && this.player.y > this.worldH + 80) {
-      this.scene.restart()
+    if (this.player && !this.player.dead && this.player.y > this.worldH + 48) {
+      this.player.die()
     }
   }
 }
