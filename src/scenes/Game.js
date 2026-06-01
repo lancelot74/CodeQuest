@@ -53,6 +53,7 @@ export default class GameScene extends Phaser.Scene {
     const charKey = SaveSystem.data.character || 'ninja'
     this.player = new Player(this, this.spawn.x, this.spawn.y, charKey)
     this.physics.add.collider(this.player, this.solids)
+    this.physics.add.collider(this.player, this.oneways, undefined, this.oneWayProcess, this)
 
     this.spawnEnemies()
     this.physics.add.collider(this.enemies, this.solids)
@@ -83,7 +84,7 @@ export default class GameScene extends Phaser.Scene {
       this,
       GAME_WIDTH / 2,
       GAME_HEIGHT - 16,
-      'Move A/D   Jump W   Slash J   Up W+J   Dive S+J   Heavy K',
+      'Move A/D  Jump W  Climb W/S  Drop S  Slash J  Up W+J  Dive S+J  Heavy K',
       7,
       '#aebbd6',
     )
@@ -325,7 +326,9 @@ export default class GameScene extends Phaser.Scene {
     const solid = (c, r) => at(c, r) === '#'
 
     this.solids = this.physics.add.staticGroup()
+    this.oneways = this.physics.add.staticGroup()
     this.solidSet = new Set()
+    this.ladderSet = new Set()
     this.spawn = { x: TILE * 2, y: TILE * 2 }
     this.exitPos = null
     this.enemySpawns = []
@@ -340,6 +343,11 @@ export default class GameScene extends Phaser.Scene {
           const frame = !solid(c - 1, r) ? set[0] : !solid(c + 1, r) ? set[2] : set[1]
           this.solids.create(px, py, 'terrain', frame).refreshBody()
           this.solidSet.add(`${c},${r}`)
+        } else if (ch === '=') {
+          this.oneways.create(px, py, 'terrain', theme.oneway).refreshBody()
+        } else if (ch === 'H') {
+          this.add.image(px, py, 'ladder').setTint(theme.ladderTint).setDepth(2)
+          this.ladderSet.add(`${c},${r}`)
         } else if (ch === 'P') {
           this.spawn = { x: px, y: py }
         } else if (ch === 'O') {
@@ -349,6 +357,21 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  oneWayProcess(player, plat) {
+    // Drop-through: ignore the platform while the player holds Down.
+    if (player.dropThrough) return false
+    // Land only from above — require the feet to have been at/above the surface
+    // last frame, so you can jump up through it and never snag from the side.
+    const prevBottom = player.body.prev.y + player.body.height
+    return player.body.velocity.y >= 0 && prevBottom <= plat.body.top + 2
+  }
+
+  isLadderAtPixel(px, py) {
+    const c = Math.floor(px / TILE)
+    const r = Math.floor(py / TILE)
+    return this.ladderSet.has(`${c},${r}`)
   }
 
   buildPortal() {

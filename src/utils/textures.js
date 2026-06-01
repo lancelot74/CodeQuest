@@ -33,4 +33,14 @@ export function createPlaceholderTextures(scene) {
   p.fillStyle(0xffffff, 1).fillRect(0, 0, 4, 4)
   p.generateTexture('spark', 4, 4)
   p.destroy()
+
+  // --- Ladder / vine (21x21, tiles vertically), recolored per world via setTint ---
+  const L = scene.make.graphics({ x: 0, y: 0, add: false })
+  L.fillStyle(0xffffff, 1)
+  L.fillRect(3, 0, 3, 21).fillRect(15, 0, 3, 21) // rails
+  L.fillRect(4, 3, 13, 3).fillRect(4, 13, 13, 3) // rungs (spaced for vertical tiling)
+  L.fillStyle(0x000000, 0.22)
+  L.fillRect(5, 0, 1, 21).fillRect(17, 0, 1, 21)
+  L.generateTexture('ladder', 21, 21)
+  L.destroy()
 }

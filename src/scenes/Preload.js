@@ -23,9 +23,9 @@ export default class PreloadScene extends Phaser.Scene {
       this.load.spritesheet(`${c}-hit`, `assets/game/players/${c}/hit.png`, SHEET)
     }
 
-    this.load.spritesheet('terrain', 'assets/game/tiles/terrain.png', {
-      frameWidth: 16,
-      frameHeight: 16,
+    this.load.spritesheet('terrain', 'assets/game/tiles/kenney-platformer.png', {
+      frameWidth: 21,
+      frameHeight: 21,
     })
     this.load.image('bg-green', 'assets/game/bg/green.png')
     this.load.image('bg-blue', 'assets/game/bg/blue.png')

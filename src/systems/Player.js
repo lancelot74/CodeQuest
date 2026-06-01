@@ -16,6 +16,7 @@ const CD_UP = 300
 const CD_DIVE = 360
 const CD_HEAVY = 580
 const COMBO_WINDOW = 520
+const CLIMB_SPEED = 95
 const IFRAME_MS = 700
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
@@ -41,6 +42,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.comboExpireAt = -1e9
     this.diving = false
     this.jumpCutAvailable = false
+    this.climbing = false
+    this.dropThrough = false
 
     const stats = SaveSystem.data.player
     this.maxHp = stats.maxHp
@@ -71,6 +74,23 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.jumpsUsed = 0
       this.diving = false
       this.jumpCutAvailable = false
+    }
+
+    // --- Ladder climbing: grab when on a ladder and pressing up/down; while
+    // climbing, gravity is off and movement is fully vertical until you step
+    // off, reach the end, or hop away. It overrides normal movement.
+    const wantUp = this.cursors.up.isDown || this.keys.w.isDown
+    const wantDown = this.cursors.down.isDown || this.keys.s.isDown
+    const onLadder = this.scene.isLadderAtPixel(this.x, this.y)
+    this.dropThrough = wantDown && !this.climbing
+    if (this.climbing) {
+      this.updateClimb(wantUp, wantDown, onLadder)
+      return
+    }
+    if (onLadder && (wantUp || wantDown)) {
+      this.startClimb()
+      this.updateClimb(wantUp, wantDown, onLadder)
+      return
     }
 
     // Acceleration + drag give momentum: snappy on the ground, but in the air
@@ -123,8 +143,41 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   freeze() {
     this.controllable = false
+    this.stopClimb()
     this.setAccelerationX(0)
     this.setVelocityX(0)
+  }
+
+  startClimb() {
+    this.climbing = true
+    this.body.setAllowGravity(false)
+    this.setAccelerationX(0)
+    this.setVelocity(0, 0)
+    this.jumpsUsed = 0
+  }
+
+  stopClimb() {
+    this.climbing = false
+    this.body.setAllowGravity(true)
+  }
+
+  updateClimb(up, down, onLadder) {
+    if (!onLadder) {
+      this.stopClimb()
+      return
+    }
+    // Hop off the ladder with Space (Up/W are reserved for climbing up).
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.space)) {
+      this.stopClimb()
+      this.setVelocityY(-JUMP_V * 0.85)
+      this.jumpCutAvailable = true
+      return
+    }
+    this.setVelocityY(up ? -CLIMB_SPEED : down ? CLIMB_SPEED : 0)
+    const left = this.cursors.left.isDown || this.keys.a.isDown
+    const right = this.cursors.right.isDown || this.keys.d.isDown
+    this.setVelocityX(left ? -60 : right ? 60 : 0)
+    this.play(`${this.charKey}-idle`, true)
   }
 
   attack(time, kind) {
@@ -202,6 +255,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   die() {
     if (this.dead) return
     this.dead = true
+    this.stopClimb()
     this.setAccelerationX(0)
     this.setVelocity(0, -260)
     this.body.checkCollision.none = true
