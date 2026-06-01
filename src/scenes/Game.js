@@ -47,7 +47,9 @@ export default class GameScene extends Phaser.Scene {
 
     const charKey = SaveSystem.data.character || 'ninja'
     this.player = new Player(this, this.spawn.x, this.spawn.y, charKey)
-    this.physics.add.collider(this.player, this.solids)
+    // While climbing a ladder the player phases through platforms, so a ladder
+    // can pass up/down through a solid floor without snagging on its underside.
+    this.physics.add.collider(this.player, this.solids, undefined, (p) => !p.climbing, this)
     this.physics.add.collider(this.player, this.oneways, undefined, this.oneWayProcess, this)
 
     this.spawnEnemies()
@@ -72,6 +74,7 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldW, this.worldH)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
     this.cameras.main.setDeadzone(70, 50)
+    this.cameras.main.setZoom(0.8) // pull back a bit so more of the level is in frame
 
     this.buildPortal()
     this.setupObjective()
@@ -411,6 +414,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   oneWayProcess(player, plat) {
+    // Climbing phases through everything (so you can climb down through a ledge).
+    if (player.climbing) return false
     // Drop-through: ignore the platform while the player holds Down.
     if (player.dropThrough) return false
     // Land only from above — require the feet to have been at/above the surface
