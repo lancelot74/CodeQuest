@@ -1,0 +1,5 @@
+[
+  { "id": "matlab", "name": "MATLAB Marsh", "order": 1, "unlockedByDefault": true,  "bg": "bg-green",  "slimeTint": "#67d46a", "boss": "ooze",  "music": "world1" },
+  { "id": "c",      "name": "C Caverns",    "order": 2, "unlockedByDefault": false, "bg": "bg-gray",   "slimeTint": "#5aa9e6", "boss": "demon", "music": "world2" },
+  { "id": "cpp",    "name": "C++ Citadel",  "order": 3, "unlockedByDefault": false, "bg": "bg-purple", "slimeTint": "#b072e0", "boss": "mage",  "music": "world3" }
+]

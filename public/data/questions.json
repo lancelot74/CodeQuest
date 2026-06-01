@@ -1,0 +1,139 @@
+[
+  {
+    "id": "matlab-q1",
+    "world": "matlab",
+    "difficulty": 1,
+    "concept": "variables",
+    "prompt": "In MATLAB, what does  x = 5  do?",
+    "options": ["Tests if x equals 5", "Stores 5 in x", "Prints 5 to the screen", "Deletes x"],
+    "answer": 1
+  },
+  {
+    "id": "matlab-q2",
+    "world": "matlab",
+    "difficulty": 1,
+    "concept": "comments",
+    "prompt": "Which symbol starts a comment in MATLAB?",
+    "options": ["//", "#", "%", "--"],
+    "answer": 2
+  },
+  {
+    "id": "matlab-q3",
+    "world": "matlab",
+    "difficulty": 1,
+    "concept": "arrays",
+    "prompt": "For  v = [10 20 30] , what is  v(1) ?",
+    "options": ["10", "20", "0", "Error"],
+    "answer": 0
+  },
+  {
+    "id": "matlab-q4",
+    "world": "matlab",
+    "difficulty": 2,
+    "concept": "output",
+    "prompt": "What does putting a semicolon ';' at the end of a line do?",
+    "options": ["Causes an error", "Hides the output", "Repeats the line", "Deletes the variable"],
+    "answer": 1
+  },
+  {
+    "id": "matlab-q5",
+    "world": "matlab",
+    "difficulty": 2,
+    "concept": "loops",
+    "prompt": "How many times does this run?  for i = 1:5 ... end",
+    "options": ["4 times", "5 times", "6 times", "Forever"],
+    "answer": 1
+  },
+
+  {
+    "id": "c-q1",
+    "world": "c",
+    "difficulty": 1,
+    "concept": "structure",
+    "prompt": "Where does a C program start running?",
+    "options": ["The first line of the file", "The #include line", "The main function", "The last function"],
+    "answer": 2
+  },
+  {
+    "id": "c-q2",
+    "world": "c",
+    "difficulty": 1,
+    "concept": "syntax",
+    "prompt": "What must end most statements in C?",
+    "options": ["A period .", "A semicolon ;", "A comma ,", "A new line"],
+    "answer": 1
+  },
+  {
+    "id": "c-q3",
+    "world": "c",
+    "difficulty": 1,
+    "concept": "types",
+    "prompt": "Which type holds a whole number like 20?",
+    "options": ["char", "double", "int", "text"],
+    "answer": 2
+  },
+  {
+    "id": "c-q4",
+    "world": "c",
+    "difficulty": 2,
+    "concept": "printf",
+    "prompt": "In printf, what does '\\n' do?",
+    "options": ["Prints the letter n", "Starts a new line", "Ends the program", "Makes a comment"],
+    "answer": 1
+  },
+  {
+    "id": "c-q5",
+    "world": "c",
+    "difficulty": 2,
+    "concept": "ifelse",
+    "prompt": "Which operator tests whether two values are equal?",
+    "options": ["=", "==", "=>", "!="],
+    "answer": 1
+  },
+
+  {
+    "id": "cpp-q1",
+    "world": "cpp",
+    "difficulty": 1,
+    "concept": "io",
+    "prompt": "In C++, what does  cout << \"Hi\";  do?",
+    "options": ["Reads input", "Prints Hi to the screen", "Deletes a variable", "Causes an error"],
+    "answer": 1
+  },
+  {
+    "id": "cpp-q2",
+    "world": "cpp",
+    "difficulty": 1,
+    "concept": "io",
+    "prompt": "Which is used to READ a value the user types?",
+    "options": ["cout <<", "cin >>", "print()", "read <<"],
+    "answer": 1
+  },
+  {
+    "id": "cpp-q3",
+    "world": "cpp",
+    "difficulty": 1,
+    "concept": "include",
+    "prompt": "Which header lets you use cout and cin?",
+    "options": ["<stdio.h>", "<string>", "<iostream>", "<math.h>"],
+    "answer": 2
+  },
+  {
+    "id": "cpp-q4",
+    "world": "cpp",
+    "difficulty": 2,
+    "concept": "functions",
+    "prompt": "For  int add(int a, int b) { return a + b; } , what is  add(2, 3) ?",
+    "options": ["23", "5", "6", "Error"],
+    "answer": 1
+  },
+  {
+    "id": "cpp-q5",
+    "world": "cpp",
+    "difficulty": 2,
+    "concept": "struct",
+    "prompt": "If a Player struct has a 'level' field, how do you read it from variable p?",
+    "options": ["p->level", "p.level", "level(p)", "p[level]"],
+    "answer": 1
+  }
+]
