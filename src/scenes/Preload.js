@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { CHARACTERS } from '../utils/constants.js'
-import { createCharacterAnimations } from '../utils/anims.js'
+import { createCharacterAnimations, createEnemyAnimations } from '../utils/anims.js'
 import { createPlaceholderTextures } from '../utils/textures.js'
 
 const SHEET = { frameWidth: 32, frameHeight: 32 }
@@ -27,6 +27,11 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 21,
       frameHeight: 21,
     })
+
+    // Marsh enemy: trimmed Ooze boss sheets (uniform 64x50 cells, centered).
+    const ENEMY = { frameWidth: 64, frameHeight: 50 }
+    this.load.spritesheet('ooze-walk', 'assets/game/enemies/ooze/walk.png', ENEMY)
+    this.load.spritesheet('ooze-death', 'assets/game/enemies/ooze/death.png', ENEMY)
     this.load.image('bg-green', 'assets/game/bg/green.png')
     this.load.image('bg-blue', 'assets/game/bg/blue.png')
     this.load.image('bg-gray', 'assets/game/bg/gray.png')
@@ -39,6 +44,7 @@ export default class PreloadScene extends Phaser.Scene {
 
   create() {
     createCharacterAnimations(this)
+    createEnemyAnimations(this)
     createPlaceholderTextures(this)
     this.scene.start('MainMenu')
   }

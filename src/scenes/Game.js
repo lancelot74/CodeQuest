@@ -3,19 +3,13 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { ContentLoader } from '../systems/ContentLoader.js'
 import Player from '../systems/Player.js'
-import Slime from '../systems/Enemy.js'
+import Enemy from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
 
 const XP_PER_SLIME = 8
-
-function hexToNum(hex, fallback) {
-  if (typeof hex !== 'string') return fallback
-  const n = parseInt(hex.replace('#', ''), 16)
-  return Number.isNaN(n) ? fallback : n
-}
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -117,7 +111,7 @@ export default class GameScene extends Phaser.Scene {
   refreshObjective() {
     const remaining = this.enemiesRemaining()
     if (this.objective.type === 'defeatAll' && remaining > 0) {
-      this.objectiveLabel = `Defeat slimes: ${remaining}`
+      this.objectiveLabel = `Defeat foes: ${remaining}`
       this.portal?.setFillStyle(0xe06a6a, 0.35).setStrokeStyle(2, 0xe06a6a)
     } else {
       this.objectiveLabel = 'Reach the portal'
@@ -184,9 +178,8 @@ export default class GameScene extends Phaser.Scene {
 
   spawnEnemies() {
     this.enemies = this.physics.add.group()
-    const tint = hexToNum(this.worldDef?.slimeTint, 0x67d46a)
     for (const sp of this.enemySpawns) {
-      this.enemies.add(new Slime(this, sp.x, sp.y, tint))
+      this.enemies.add(new Enemy(this, sp.x, sp.y))
     }
   }
 

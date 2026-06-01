@@ -12,6 +12,12 @@ export function createCharacterAnimations(scene) {
   }
 }
 
+// Enemy animations (the Ooze marsh creature). Built once, like the hero set.
+export function createEnemyAnimations(scene) {
+  define(scene, 'ooze-walk', 'ooze-walk', 7, -1)
+  define(scene, 'ooze-death', 'ooze-death', 11, 0)
+}
+
 function define(scene, key, sheetKey, frameRate, repeat) {
   if (scene.anims.exists(key)) return
   scene.anims.create({

@@ -1,19 +1,10 @@
 import Phaser from 'phaser'
 
-// Procedurally generated placeholder art so the slice runs with zero extra
-// image assets. Slimes are drawn white and recolored per world via setTint,
-// so the base texture must stay grayscale (dark stays dark under tint).
+// Procedurally generated FX so the slice runs with zero extra image assets.
+// Slash/spark/ladder are drawn white and recolored at use via setTint, so the
+// base textures stay grayscale (dark stays dark under tint).
 export function createPlaceholderTextures(scene) {
-  if (scene.textures.exists('slime')) return
-
-  // --- Blob slime (24x18) ---
-  const s = scene.make.graphics({ x: 0, y: 0, add: false })
-  s.fillStyle(0xffffff, 1).fillEllipse(12, 10, 22, 16)
-  s.lineStyle(2, 0x222633, 0.35).strokeEllipse(12, 10, 22, 16)
-  s.fillStyle(0x1a1d2b, 1).fillCircle(8, 9, 2.2).fillCircle(16, 9, 2.2)
-  s.fillStyle(0x1a1d2b, 1).fillRect(10, 14, 4, 1.4)
-  s.generateTexture('slime', 24, 18)
-  s.destroy()
+  if (scene.textures.exists('slash')) return
 
   // --- Slash arc (22x26), tinted at use ---
   const a = scene.make.graphics({ x: 0, y: 0, add: false })

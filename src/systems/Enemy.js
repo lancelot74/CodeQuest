@@ -1,20 +1,22 @@
 import Phaser from 'phaser'
 import { CombatSystem } from './CombatSystem.js'
 
-const PATROL_SPEED = 42
+const PATROL_SPEED = 40
+const SCALE = 0.68
 
-// Placeholder blob-slime. Swap for the Pixel Adventure 2 enemy pack later;
-// the patrol/HP/death contract here stays the same.
-export default class Slime extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y, tint = 0xffffff) {
-    super(scene, x, y, 'slime')
+// Marsh enemy: the Ooze creature (trimmed boss sheets). Native art faces LEFT,
+// so flipX is true when moving right. Patrol/HP/death contract matches what the
+// scene expects; per-world variants (Demon, Mage) can reuse this shape later.
+export default class Enemy extends Phaser.Physics.Arcade.Sprite {
+  constructor(scene, x, y) {
+    super(scene, x, y, 'ooze-walk')
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
-    this.baseTint = tint
-    this.setTint(tint)
+    this.setScale(SCALE)
     this.setDepth(8)
-    this.body.setSize(18, 12).setOffset(3, 5)
+    // Body inset from the 64x50 cell, bottom-anchored to the creature's base.
+    this.body.setSize(40, 30).setOffset(12, 20)
     this.setCollideWorldBounds(true)
 
     this.maxHp = 30
@@ -22,17 +24,9 @@ export default class Slime extends Phaser.Physics.Arcade.Sprite {
     this.contactDamage = 12
     this.dead = false
     this.dir = Math.random() < 0.5 ? -1 : 1
-    this.setFlipX(this.dir < 0)
+    this.face(this.dir)
 
-    this.bob = scene.tweens.add({
-      targets: this,
-      scaleY: 0.86,
-      scaleX: 1.1,
-      yoyo: true,
-      repeat: -1,
-      duration: 520,
-      ease: 'Sine.inOut',
-    })
+    this.play('ooze-walk')
   }
 
   preUpdate(time, delta) {
@@ -52,13 +46,13 @@ export default class Slime extends Phaser.Physics.Arcade.Sprite {
 
   face(dir) {
     this.dir = dir
-    this.setFlipX(dir < 0)
+    this.setFlipX(dir > 0)
   }
 
   hurt(amount, isCrit, fromX) {
     if (this.dead) return
     this.hp -= amount
-    CombatSystem.floatingNumber(this.scene, this.x, this.y - 12, amount, { crit: isCrit })
+    CombatSystem.floatingNumber(this.scene, this.x, this.y - 18, amount, { crit: isCrit })
 
     const away = this.x < fromX ? -1 : 1
     this.setVelocityX(away * 90)
@@ -66,7 +60,7 @@ export default class Slime extends Phaser.Physics.Arcade.Sprite {
 
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(70, () => {
-      if (!this.dead) this.setTint(this.baseTint)
+      if (!this.dead) this.clearTint()
     })
 
     if (this.hp <= 0) this.die()
@@ -74,20 +68,19 @@ export default class Slime extends Phaser.Physics.Arcade.Sprite {
 
   die() {
     this.dead = true
-    this.bob?.stop()
-    this.setTint(this.baseTint)
+    this.clearTint()
+    this.setVelocity(0, 0)
     this.body.enable = false
-    CombatSystem.puff(this.scene, this.x, this.y, this.baseTint)
     this.scene.events.emit('enemy-died', this)
-    this.scene.tweens.add({
-      targets: this,
-      alpha: 0,
-      scaleX: 1.4,
-      scaleY: 0.4,
-      y: this.y + 4,
-      duration: 220,
-      ease: 'Quad.in',
-      onComplete: () => this.destroy(),
+    this.play('ooze-death')
+    this.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      this.scene.tweens.add({
+        targets: this,
+        alpha: 0,
+        duration: 180,
+        ease: 'Quad.in',
+        onComplete: () => this.destroy(),
+      })
     })
   }
 }
