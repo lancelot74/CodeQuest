@@ -1,7 +1,8 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
+import { CHARACTERS } from '../utils/constants.js'
+import { createCharacterAnimations } from '../utils/anims.js'
 
-export const CHARACTERS = ['ninja', 'pink', 'mask', 'virtual']
 const SHEET = { frameWidth: 32, frameHeight: 32 }
 
 export default class PreloadScene extends Phaser.Scene {
@@ -21,7 +22,10 @@ export default class PreloadScene extends Phaser.Scene {
       this.load.spritesheet(`${c}-hit`, `assets/game/players/${c}/hit.png`, SHEET)
     }
 
-    this.load.spritesheet('terrain', 'assets/game/tiles/terrain.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.spritesheet('terrain', 'assets/game/tiles/terrain.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+    })
     this.load.image('bg-green', 'assets/game/bg/green.png')
     this.load.image('bg-blue', 'assets/game/bg/blue.png')
     this.load.image('bg-gray', 'assets/game/bg/gray.png')
@@ -33,38 +37,25 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   create() {
-    // Placeholder stage until MainMenu is built (next step wires this to MainMenu).
-    this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 8, 'CODEQUEST', {
-        fontFamily: '"Press Start 2P"',
-        fontSize: '24px',
-        color: '#ffe066',
-      })
-      .setOrigin(0.5)
-    this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 28, 'scaffold ready', {
-        fontFamily: '"Press Start 2P"',
-        fontSize: '8px',
-        color: '#8ea0c0',
-      })
-      .setOrigin(0.5)
+    createCharacterAnimations(this)
+    this.scene.start('MainMenu')
   }
 
   drawLoadingBar() {
     const w = 240
     const h = 14
     const x = (GAME_WIDTH - w) / 2
-    const y = GAME_HEIGHT / 2 + 56
+    const y = GAME_HEIGHT / 2
 
     const box = this.add.graphics()
     box.fillStyle(0x1b2138, 1).fillRect(x, y, w, h)
 
     const bar = this.add.graphics()
     const label = this.add
-      .text(GAME_WIDTH / 2, y - 16, 'Loading…', {
+      .text(GAME_WIDTH / 2, y - 22, 'CODEQUEST', {
         fontFamily: '"Press Start 2P"',
-        fontSize: '8px',
-        color: '#ffffff',
+        fontSize: '16px',
+        color: '#ffe066',
       })
       .setOrigin(0.5)
 
