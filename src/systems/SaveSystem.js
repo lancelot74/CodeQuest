@@ -1,6 +1,10 @@
 const KEY = 'codequest.save.v1'
 const VERSION = 1
 
+export function xpForLevel(level) {
+  return 12 + (level - 1) * 8
+}
+
 function defaultSave() {
   return {
     version: VERSION,
@@ -104,5 +108,20 @@ export const SaveSystem = {
   savePlayer(stats) {
     Object.assign(this.load().player, stats)
     this.save()
+  },
+
+  addXp(amount) {
+    const p = this.load().player
+    p.xp += amount
+    let leveledUp = false
+    while (p.xp >= xpForLevel(p.level)) {
+      p.xp -= xpForLevel(p.level)
+      p.level += 1
+      p.maxHp += 10
+      p.attack += 2
+      leveledUp = true
+    }
+    this.save()
+    return { leveledUp, level: p.level }
   },
 }

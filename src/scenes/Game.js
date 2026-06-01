@@ -6,6 +6,9 @@ import Player from '../systems/Player.js'
 import Slime from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
+import { pixelText } from '../ui/widgets.js'
+
+const XP_PER_SLIME = 8
 
 function hexToNum(hex, fallback) {
   if (typeof hex !== 'string') return fallback
@@ -58,12 +61,93 @@ export default class GameScene extends Phaser.Scene {
     this.events.on('player-attack', this.onPlayerAttack, this)
     this.events.off('player-dead', this.onPlayerDead, this)
     this.events.once('player-dead', this.onPlayerDead, this)
+    this.events.off('enemy-died', this.onEnemyDied, this)
+    this.events.on('enemy-died', this.onEnemyDied, this)
 
     this.cameras.main.setBounds(0, 0, this.worldW, this.worldH)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
     this.cameras.main.setDeadzone(70, 50)
 
     this.buildPortal()
+    this.setupObjective()
+
+    this.scene.launch('HUD')
+    this.events.once('shutdown', () => this.scene.stop('HUD'))
+  }
+
+  setupObjective() {
+    this.cleared = false
+    this.objective = this.level.objective || { type: 'reachPortal' }
+    if (this.exitPos) {
+      this.portalZone = this.add.zone(this.exitPos.x, this.exitPos.y, TILE, TILE * 2)
+      this.physics.add.existing(this.portalZone, true)
+      this.physics.add.overlap(this.player, this.portalZone, () => this.tryClear(), undefined, this)
+    }
+    this.refreshObjective()
+  }
+
+  enemiesRemaining() {
+    return this.enemies ? this.enemies.getChildren().filter((e) => !e.dead).length : 0
+  }
+
+  refreshObjective() {
+    const remaining = this.enemiesRemaining()
+    if (this.objective.type === 'defeatAll' && remaining > 0) {
+      this.objectiveLabel = `Defeat slimes: ${remaining}`
+      this.portal?.setFillStyle(0xe06a6a, 0.35).setStrokeStyle(2, 0xe06a6a)
+    } else {
+      this.objectiveLabel = 'Reach the portal'
+      this.portal?.setFillStyle(0xffe066, 0.4).setStrokeStyle(2, 0xffe066)
+    }
+  }
+
+  objectiveMet() {
+    return this.objective.type !== 'defeatAll' || this.enemiesRemaining() === 0
+  }
+
+  tryClear() {
+    if (this.cleared || !this.objectiveMet()) return
+    this.clearLevel()
+  }
+
+  clearLevel() {
+    this.cleared = true
+    this.player.freeze()
+    SaveSystem.markLevelCleared(this.levelId)
+    this.cameras.main.flash(180, 124, 252, 152)
+    const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 12, 'LEVEL CLEAR', 18, '#7cfc98')
+      .setScrollFactor(0)
+      .setDepth(50)
+    this.tweens.add({ targets: t, scale: { from: 0.6, to: 1 }, duration: 280, ease: 'Back.out' })
+    this.time.delayedCall(1500, () =>
+      this.scene.start('LevelSelect', { worldId: this.worldId }),
+    )
+  }
+
+  onEnemyDied() {
+    const res = SaveSystem.addXp(XP_PER_SLIME)
+    this.player.maxHp = SaveSystem.data.player.maxHp
+    this.player.attackPower = SaveSystem.data.player.attack
+    if (res.leveledUp) {
+      this.player.hp = this.player.maxHp
+      this.showLevelUp(res.level)
+    }
+    this.refreshObjective()
+  }
+
+  showLevelUp(level) {
+    this.cameras.main.flash(150, 255, 224, 102)
+    const t = pixelText(this, GAME_WIDTH / 2, 74, `LEVEL UP  ${level}`, 12, '#ffe066')
+      .setScrollFactor(0)
+      .setDepth(50)
+    this.tweens.add({
+      targets: t,
+      y: 54,
+      alpha: 0,
+      duration: 1100,
+      ease: 'Cubic.out',
+      onComplete: () => t.destroy(),
+    })
   }
 
   spawnEnemies() {

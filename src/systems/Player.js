@@ -26,6 +26,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.jumpsUsed = 0
     this.facing = 1
     this.dead = false
+    this.controllable = true
 
     const stats = SaveSystem.data.player
     this.maxHp = stats.maxHp
@@ -43,6 +44,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   preUpdate(time, delta) {
     super.preUpdate(time, delta)
     if (this.dead) return
+    if (!this.controllable) {
+      this.setVelocityX(0)
+      this.animate(this.body.blocked.down)
+      return
+    }
 
     const onGround = this.body.blocked.down
     if (onGround) {
@@ -90,6 +96,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (attackPressed) this.attack(time)
 
     this.animate(onGround)
+  }
+
+  freeze() {
+    this.controllable = false
+    this.setVelocityX(0)
   }
 
   attack(time) {
