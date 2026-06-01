@@ -12,10 +12,15 @@ export function createCharacterAnimations(scene) {
   }
 }
 
-// Enemy animations (the Ooze marsh creature). Built once, like the hero set.
+// Enemy animations (marsh creatures: Ooze, Demon, Mage). Built once, like the
+// hero set. Each death plays through once and holds on its last frame.
 export function createEnemyAnimations(scene) {
   define(scene, 'ooze-walk', 'ooze-walk', 7, -1)
   define(scene, 'ooze-death', 'ooze-death', 11, 0)
+  define(scene, 'demon-walk', 'demon-walk', 9, -1)
+  define(scene, 'demon-death', 'demon-death', 9, 0)
+  define(scene, 'mage-walk', 'mage-walk', 9, -1)
+  define(scene, 'mage-death', 'mage-death', 10, 0)
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {

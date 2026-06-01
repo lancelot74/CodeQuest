@@ -1,4 +1,5 @@
 import { COLORS } from '../utils/constants.js'
+import { Audio, SFX } from '../systems/AudioSystem.js'
 
 // A repeating pixel backdrop dimmed for legibility — shared across menu scenes.
 export function addBackdrop(scene, bgKey = 'bg-purple', dim = 0.5) {
@@ -45,7 +46,10 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
   }
 
   bg.setInteractive({ useHandCursor: true })
-  bg.on('pointerover', () => bg.setTint(0xe2ecff))
+  bg.on('pointerover', () => {
+    bg.setTint(0xe2ecff)
+    Audio.play(scene, SFX.rollover)
+  })
   bg.on('pointerout', () => bg.clearTint())
   bg.on('pointerdown', () => {
     bg.setScale(0.96)
@@ -54,6 +58,7 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
   bg.on('pointerup', () => {
     bg.setScale(1)
     t.setScale(1)
+    Audio.play(scene, SFX.click)
     onClick?.()
   })
   return { bg, text: t }
@@ -71,11 +76,15 @@ export function button(scene, x, y, label, onClick, opts = {}) {
   }
 
   t.setInteractive({ useHandCursor: true })
-  t.on('pointerover', () => t.setColor(hover))
+  t.on('pointerover', () => {
+    t.setColor(hover)
+    Audio.play(scene, SFX.rollover)
+  })
   t.on('pointerout', () => t.setColor(color))
   t.on('pointerdown', () => t.setScale(0.94))
   t.on('pointerup', () => {
     t.setScale(1)
+    Audio.play(scene, SFX.click)
     onClick?.()
   })
   return t

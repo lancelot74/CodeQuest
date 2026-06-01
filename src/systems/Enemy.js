@@ -1,10 +1,7 @@
 import Phaser from 'phaser'
 import { CombatSystem } from './CombatSystem.js'
 
-const PATROL_SPEED = 40
-const SCALE = 0.68
-
-// Attack tuning
+// Attack tuning (shared timings; per-type stats live in TYPES below).
 const DETECT = 210 // starts paying attention to the player within this range
 const MELEE = 46 // lunge-bite range
 const SPIT_MIN = 56 // closer than this, prefer to lunge
@@ -18,26 +15,54 @@ const SPIT_WINDUP = 280
 const SPIT_CD = 1700
 const RECOVER = 380
 
-// Marsh enemy: the Ooze. Native art faces LEFT (flipX when moving right). It
-// patrols, spits a venom orb at range, and lunge-bites up close. Origin is
-// bottom-centre so the sprite's y is its feet line — it rests cleanly on the
-// floor instead of sinking in.
+// Per-type config. body = [width, height, offsetX, offsetY] in unscaled cell px;
+// origin is bottom-centre so y is the feet line. All three sheets face LEFT
+// natively (flipX when moving right).
+const TYPES = {
+  ooze: {
+    walk: 'ooze-walk', death: 'ooze-death',
+    scale: 0.68, body: [40, 30, 12, 20],
+    hp: 30, contact: 12, speed: 40,
+    lunge: true, spit: true, venom: 0x9be86a,
+  },
+  demon: {
+    walk: 'demon-walk', death: 'demon-death',
+    scale: 0.7, body: [42, 40, 11, 16],
+    hp: 60, contact: 18, speed: 58,
+    lunge: true, spit: false, venom: 0x9be86a,
+  },
+  mage: {
+    walk: 'mage-walk', death: 'mage-death',
+    scale: 0.62, body: [30, 44, 10, 20],
+    hp: 22, contact: 9, speed: 34,
+    lunge: false, spit: true, venom: 0xc77bff,
+  },
+}
+
+// Marsh enemy. Patrols a platform; the Ooze spits venom and lunge-bites, the
+// Demon is a heavy melee bruiser (lunge only), the Mage is a fragile caster
+// (ranged spit only). Telegraphs every attack with a squash + warning flash.
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y) {
-    super(scene, x, y, 'ooze-walk')
+  constructor(scene, x, y, type = 'ooze') {
+    const cfg = TYPES[type] || TYPES.ooze
+    super(scene, x, y, cfg.walk)
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
+    this.type = type
+    this.cfg = cfg
+    this.baseScale = cfg.scale
+
     this.setOrigin(0.5, 1)
-    this.setScale(SCALE)
+    this.setScale(cfg.scale)
     this.setDepth(8)
-    // Body bottom sits on the feet line; inset and centred in the 64x50 cell.
-    this.body.setSize(40, 30).setOffset(12, 20)
+    this.body.setSize(cfg.body[0], cfg.body[1]).setOffset(cfg.body[2], cfg.body[3])
     this.setCollideWorldBounds(true)
 
-    this.maxHp = 30
+    this.maxHp = cfg.hp
     this.hp = this.maxHp
-    this.contactDamage = 12
+    this.contactDamage = cfg.contact
+    this.speed = cfg.speed
     this.dead = false
     this.dir = Math.random() < 0.5 ? -1 : 1
     this.face(this.dir)
@@ -48,7 +73,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.nextSpitAt = 0
     this.lungeActive = false
 
-    this.play('ooze-walk')
+    this.play(cfg.walk)
   }
 
   preUpdate(time, delta) {
@@ -80,7 +105,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.setVelocityX(0)
       if (time >= this.stateUntil) {
         const p = this.scene.player
-        if (p && !p.dead) this.scene.spawnVenom(this.x, this.y - 24, p.x, p.y - 10)
+        if (p && !p.dead) this.scene.spawnVenom(this.x, this.y - 24, p.x, p.y - 10, this.cfg.venom)
         this.state = 'recover'
         this.stateUntil = time + RECOVER
       }
@@ -100,13 +125,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       const ad = Math.abs(dx)
       if (Math.abs(p.y - this.y) < SAME_LEVEL && ad < DETECT) {
         const fdir = dx < 0 ? -1 : 1
-        if (ad <= MELEE && time >= this.nextLungeAt) {
+        if (this.cfg.lunge && ad <= MELEE && time >= this.nextLungeAt) {
           this.face(fdir)
           this.beginAttack('windupLunge', LUNGE_WINDUP)
           this.nextLungeAt = time + LUNGE_CD
           return
         }
-        if (ad > SPIT_MIN && ad < SPIT_MAX && time >= this.nextSpitAt) {
+        if (this.cfg.spit && ad > SPIT_MIN && ad < SPIT_MAX && time >= this.nextSpitAt) {
           this.face(fdir)
           this.beginAttack('windupSpit', SPIT_WINDUP)
           this.nextSpitAt = time + SPIT_CD
@@ -119,8 +144,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     else if (this.body.blocked.right) this.face(-1)
     else if (this.body.blocked.down && !this.aheadIsSolid()) this.face(-this.dir)
 
-    this.setVelocityX(PATROL_SPEED * this.dir)
-    this.play('ooze-walk', true)
+    this.setVelocityX(this.speed * this.dir)
+    this.play(this.cfg.walk, true)
   }
 
   aheadIsSolid() {
@@ -135,8 +160,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // telegraph: brief squash + warning flash so the player can react
     this.scene.tweens.add({
       targets: this,
-      scaleX: SCALE * 1.18,
-      scaleY: SCALE * 0.88,
+      scaleX: this.baseScale * 1.18,
+      scaleY: this.baseScale * 0.88,
       yoyo: true,
       duration: windup / 2,
     })
@@ -175,7 +200,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setVelocity(0, 0)
     this.body.enable = false
     this.scene.events.emit('enemy-died', this)
-    this.play('ooze-death')
+    this.play(this.cfg.death)
     this.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
       this.scene.tweens.add({
         targets: this,

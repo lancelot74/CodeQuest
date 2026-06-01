@@ -5,6 +5,7 @@ import { ContentLoader } from '../systems/ContentLoader.js'
 import Player from '../systems/Player.js'
 import Enemy from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
+import { Audio, SFX } from '../systems/AudioSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
@@ -63,6 +64,10 @@ export default class GameScene extends Phaser.Scene {
     this.events.once('player-dead', this.onPlayerDead, this)
     this.events.off('enemy-died', this.onEnemyDied, this)
     this.events.on('enemy-died', this.onEnemyDied, this)
+    this.events.off('player-jump', this.onPlayerJump, this)
+    this.events.on('player-jump', this.onPlayerJump, this)
+    this.events.off('player-hp', this.onPlayerHurt, this)
+    this.events.on('player-hp', this.onPlayerHurt, this)
 
     this.cameras.main.setBounds(0, 0, this.worldW, this.worldH)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
@@ -114,13 +119,9 @@ export default class GameScene extends Phaser.Scene {
 
   refreshObjective() {
     const remaining = this.enemiesRemaining()
-    if (this.objective.type === 'defeatAll' && remaining > 0) {
-      this.objectiveLabel = `Defeat foes: ${remaining}`
-      this.portal?.setFillStyle(0xe06a6a, 0.35).setStrokeStyle(2, 0xe06a6a)
-    } else {
-      this.objectiveLabel = 'Reach the portal'
-      this.portal?.setFillStyle(0xffe066, 0.4).setStrokeStyle(2, 0xffe066)
-    }
+    const ready = this.objective.type !== 'defeatAll' || remaining === 0
+    this.objectiveLabel = ready ? 'Reach the portal' : `Defeat foes: ${remaining}`
+    this.setPortalActive(ready)
   }
 
   objectiveMet() {
@@ -135,6 +136,7 @@ export default class GameScene extends Phaser.Scene {
   clearLevel() {
     this.cleared = true
     this.player.freeze()
+    Audio.play(this, SFX.clear)
 
     const lessonId = this.level.lessonId
     SaveSystem.markLevelCleared(this.levelId)
@@ -155,6 +157,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onEnemyDied() {
+    Audio.play(this, SFX.enemyDie)
     const res = SaveSystem.addXp(XP_PER_SLIME)
     this.player.maxHp = SaveSystem.data.player.maxHp
     this.player.attackPower = SaveSystem.data.player.attack
@@ -166,6 +169,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   showLevelUp(level) {
+    Audio.play(this, SFX.levelUp)
     this.cameras.main.flash(150, 255, 224, 102)
     const t = pixelText(this, GAME_WIDTH / 2, 74, `LEVEL UP  ${level}`, 12, '#ffe066')
       .setScrollFactor(0)
@@ -183,7 +187,7 @@ export default class GameScene extends Phaser.Scene {
   spawnEnemies() {
     this.enemies = this.physics.add.group()
     for (const sp of this.enemySpawns) {
-      this.enemies.add(new Enemy(this, sp.x, sp.y))
+      this.enemies.add(new Enemy(this, sp.x, sp.y, sp.type))
     }
   }
 
@@ -193,9 +197,19 @@ export default class GameScene extends Phaser.Scene {
     player.hit(dmg, enemy.x, this.time.now)
   }
 
-  spawnVenom(x, y, targetX, targetY) {
+  onPlayerJump() {
+    Audio.play(this, SFX.jump)
+  }
+
+  onPlayerHurt() {
+    Audio.play(this, SFX.hit)
+  }
+
+  spawnVenom(x, y, targetX, targetY, tint = 0x9be86a) {
+    Audio.play(this, SFX.spit)
     const orb = this.projectiles.create(x, y, 'venom')
-    orb.setDepth(7).setTint(0x9be86a)
+    orb.setDepth(7).setTint(tint)
+    orb.popTint = tint
     orb.body.setAllowGravity(false)
     orb.body.setCircle(6, 3, 3)
     const ang = Math.atan2(targetY - y, targetX - x)
@@ -213,12 +227,13 @@ export default class GameScene extends Phaser.Scene {
 
   popVenom(orb) {
     if (!orb || !orb.active) return
-    CombatSystem.puff(this, orb.x, orb.y, 0x9be86a)
+    CombatSystem.puff(this, orb.x, orb.y, orb.popTint || 0x9be86a)
     orb.destroy()
   }
 
   onPlayerAttack({ type, combo, x, y, facing }) {
     this.spawnSlashFx(type, x, y, facing)
+    Audio.play(this, type === 'heavy' ? SFX.heavy : SFX.slash)
 
     const atk = this.player.attackPower
     let rect
@@ -248,6 +263,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     let hitAny = false
+    let critAny = false
     for (const enemy of this.enemies.getChildren()) {
       if (enemy.dead) continue
       if (Phaser.Geom.Intersects.RectangleToRectangle(rect, enemy.getBounds())) {
@@ -258,9 +274,14 @@ export default class GameScene extends Phaser.Scene {
           enemy.setVelocityX(away * 90 * knock)
         }
         hitAny = true
-        if (isCrit) CombatSystem.shake(this)
+        if (isCrit) {
+          critAny = true
+          CombatSystem.shake(this)
+        }
       }
     }
+    if (hitAny) Audio.play(this, SFX.enemyHit)
+    if (critAny) Audio.play(this, SFX.crit)
 
     if (type === 'dive' && hitAny) {
       this.player.jumpCutAvailable = false
@@ -312,6 +333,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onPlayerDead() {
+    Audio.play(this, SFX.playerDie)
     this.player.body.checkCollision.none = true
     this.time.delayedCall(700, () => {
       this.scene.start('GameOver', { worldId: this.worldId, levelId: this.levelId })
@@ -380,8 +402,9 @@ export default class GameScene extends Phaser.Scene {
           this.spawn = { x: px, y: py }
         } else if (ch === 'O') {
           this.exitPos = { x: px, y: py }
-        } else if (ch === 'E') {
-          this.enemySpawns.push({ x: px, y: py })
+        } else if (ch === 'E' || ch === 'D' || ch === 'M') {
+          const type = ch === 'D' ? 'demon' : ch === 'M' ? 'mage' : 'ooze'
+          this.enemySpawns.push({ x: px, y: py, type })
         }
       }
     }
@@ -404,17 +427,71 @@ export default class GameScene extends Phaser.Scene {
 
   buildPortal() {
     if (!this.exitPos) return
-    this.portal = this.add
-      .rectangle(this.exitPos.x, this.exitPos.y, TILE - 2, TILE * 2, 0xffe066, 0.4)
-      .setStrokeStyle(2, 0xffe066)
+    const { x, y } = this.exitPos
+
+    // A layered swirling doorway: soft glow halo, an outer ring, a slow-spinning
+    // vortex blade, a pulsing bright core, and rising motes. Colour is set by
+    // setPortalActive (amber while locked, green once the objective is met).
+    this.portalGlow = this.add.ellipse(x, y, TILE * 1.9, TILE * 2.6, 0xffa64d, 0.14).setDepth(4)
+    this.portalRing = this.add
+      .ellipse(x, y, TILE * 1.25, TILE * 2.05, 0xffa64d, 0.0)
+      .setStrokeStyle(3, 0xffa64d, 0.9)
       .setDepth(5)
+    this.portalSwirl = this.add.ellipse(x, y, TILE * 0.5, TILE * 1.55, 0xffa64d, 0.22).setDepth(5)
+    this.portalCore = this.add.ellipse(x, y, TILE * 0.8, TILE * 1.5, 0xffe2b0, 0.5).setDepth(5)
+
+    this.portalMotes = this.add
+      .particles(x, y, 'spark', {
+        x: { min: -TILE * 0.45, max: TILE * 0.45 },
+        y: { min: TILE * 0.9, max: TILE * 1.0 },
+        speedY: { min: -55, max: -90 },
+        speedX: { min: -10, max: 10 },
+        scale: { start: 0.7, end: 0 },
+        alpha: { start: 0.9, end: 0 },
+        lifespan: 950,
+        frequency: 110,
+        blendMode: 'ADD',
+      })
+      .setDepth(5)
+
     this.tweens.add({
-      targets: this.portal,
-      alpha: { from: 0.25, to: 0.6 },
+      targets: this.portalSwirl,
+      angle: 360,
+      duration: 2600,
+      repeat: -1,
+    })
+    this.tweens.add({
+      targets: this.portalCore,
+      scaleX: 1.18,
+      scaleY: 1.08,
+      alpha: { from: 0.4, to: 0.72 },
       yoyo: true,
       repeat: -1,
-      duration: 700,
+      duration: 780,
+      ease: 'Sine.inOut',
     })
+    this.tweens.add({
+      targets: this.portalGlow,
+      alpha: { from: 0.1, to: 0.22 },
+      scaleX: { from: 0.95, to: 1.08 },
+      scaleY: { from: 0.95, to: 1.08 },
+      yoyo: true,
+      repeat: -1,
+      duration: 1100,
+      ease: 'Sine.inOut',
+    })
+  }
+
+  setPortalActive(active) {
+    if (!this.portalRing || this.portalReady === active) return
+    this.portalReady = active
+    const main = active ? 0x7cfc98 : 0xffa64d
+    const bright = active ? 0xdfffe9 : 0xffe2b0
+    this.portalGlow.setFillStyle(main, 0.14)
+    this.portalRing.setStrokeStyle(3, main, 0.9)
+    this.portalSwirl.setFillStyle(main, 0.22)
+    this.portalCore.setFillStyle(bright, 0.5)
+    if (this.portalMotes.setParticleTint) this.portalMotes.setParticleTint(main)
   }
 
   update() {

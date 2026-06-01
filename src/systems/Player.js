@@ -44,6 +44,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.jumpCutAvailable = false
     this.climbing = false
     this.dropThrough = false
+    this.leftLadderGrace = false
 
     const stats = SaveSystem.data.player
     this.maxHp = stats.maxHp
@@ -74,6 +75,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.jumpsUsed = 0
       this.diving = false
       this.jumpCutAvailable = false
+      this.leftLadderGrace = false
     }
 
     // --- Ladder climbing: grab when on a ladder and pressing up/down; while
@@ -120,7 +122,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const buffered = time - this.lastJumpAt <= BUFFER_MS
     const coyote = time - this.lastGroundedAt <= COYOTE_MS
     if (buffered) {
-      if (this.jumpsUsed === 0 && (onGround || coyote)) this.doJump(false)
+      if (this.jumpsUsed === 0 && (onGround || coyote || this.leftLadderGrace)) this.doJump(false)
       else if (this.jumpsUsed >= 1 && this.jumpsUsed < MAX_JUMPS) this.doJump(true)
     }
 
@@ -164,13 +166,22 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   updateClimb(up, down, onLadder) {
     if (!onLadder) {
       this.stopClimb()
+      // Stepped off the side/end of a ladder into open air: hand back a fresh
+      // ground-style jump (plus the usual air jump) so you're never stranded.
+      if (!this.body.blocked.down) {
+        this.jumpsUsed = 0
+        this.leftLadderGrace = true
+      }
       return
     }
-    // Hop off the ladder with Space (Up/W are reserved for climbing up).
+    // Hop off the ladder with Space (Up/W are reserved for climbing up). The hop
+    // counts as the first jump, leaving the air jump available on the way down.
     if (Phaser.Input.Keyboard.JustDown(this.cursors.space)) {
       this.stopClimb()
       this.setVelocityY(-JUMP_V * 0.85)
       this.jumpCutAvailable = true
+      this.jumpsUsed = 1
+      this.scene.events.emit('player-jump')
       return
     }
     this.setVelocityY(up ? -CLIMB_SPEED : down ? CLIMB_SPEED : 0)
@@ -268,6 +279,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.setVelocityY(-JUMP_V)
     this.jumpsUsed = isDouble ? this.jumpsUsed + 1 : 1
     this.jumpCutAvailable = true
+    this.leftLadderGrace = false
     this.lastJumpAt = -1e9
     this.lastGroundedAt = -1e9
     if (isDouble) this.play(`${this.charKey}-doublejump`, true)
