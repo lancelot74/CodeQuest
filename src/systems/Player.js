@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { SaveSystem } from './SaveSystem.js'
 import { CombatSystem } from './CombatSystem.js'
 import { TouchState, resetTouch } from './TouchState.js'
+import { heroKit } from '../utils/constants.js'
 
 const MAX_SPEED = 170
 const ACCEL_GROUND = 1700
@@ -250,7 +251,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.attackReadyAt = time + cd
 
-    if (type === 'heavy') this.setVelocityX(this.facing * 110)
+    if (type === 'heavy') this.setVelocityX(this.facing * heroKit(this.charKey).dashV)
     else if (type === 'dive') {
       this.setVelocityY(360)
       this.diving = true

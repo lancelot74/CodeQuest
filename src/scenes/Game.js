@@ -7,6 +7,7 @@ import Enemy from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { Audio, SFX } from '../systems/AudioSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
+import { heroKit } from '../utils/constants.js'
 import { pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
 import { showTouchControls, hideTouchControls, isTouchDevice } from '../ui/touchControls.js'
@@ -61,6 +62,8 @@ export default class GameScene extends Phaser.Scene {
 
     this.projectiles = this.physics.add.group()
     this.physics.add.overlap(this.player, this.projectiles, this.onVenomHit, undefined, this)
+    // Parried / hero-cast orbs are flagged friendly and damage enemies instead.
+    this.physics.add.overlap(this.enemies, this.projectiles, this.onFriendlyHit, undefined, this)
     this.physics.add.collider(this.projectiles, this.solids, (orb) => this.popVenom(orb))
 
     this.events.off('player-attack', this.onPlayerAttack, this)
@@ -216,6 +219,7 @@ export default class GameScene extends Phaser.Scene {
     orb.setDepth(7).setTint(tint)
     orb.popTint = tint
     orb.dmg = dmg
+    orb.friendly = false
     orb.body.setAllowGravity(false)
     orb.body.setCircle(6, 3, 3)
     const SPEED = 165
@@ -246,21 +250,73 @@ export default class GameScene extends Phaser.Scene {
     this.spawnShockwave(x, y, 1)
   }
 
-  spawnShockwave(x, y, dir, tint = 0xff8a3c) {
+  spawnShockwave(x, y, dir, { tint = 0xff8a3c, dmg = 14, friendly = false } = {}) {
     const orb = this.projectiles.create(x + dir * 14, y - 9, 'venom')
     orb.setDepth(7).setTint(tint).setScale(1.6, 0.7)
     orb.popTint = tint
-    orb.dmg = 14
+    orb.dmg = dmg
+    orb.friendly = friendly
     orb.body.setAllowGravity(false)
     orb.body.setCircle(6, 3, 3)
     orb.setVelocity(dir * 150, 0)
     this.time.delayedCall(1400, () => orb.active && orb.destroy())
+    return orb
   }
 
   onVenomHit(player, orb) {
+    if (orb.friendly) return // reflected/cast orbs don't hurt the player
     if (this.cleared || player.dead) return this.popVenom(orb)
     player.hit(orb.dmg || 10, orb.x, this.time.now)
     this.popVenom(orb)
+  }
+
+  onFriendlyHit(enemy, orb) {
+    if (this.cleared || !orb.active || !orb.friendly || enemy.dead) return
+    const { amount, isCrit } = CombatSystem.roll(orb.dmg || 10, { critChance: orb.critChance ?? 0.2 })
+    enemy.hurt(amount, isCrit, orb.x)
+    Audio.play(this, SFX.enemyHit)
+    if (isCrit) {
+      Audio.play(this, SFX.crit)
+      CombatSystem.shake(this)
+    }
+    this.popVenom(orb)
+  }
+
+  nearestEnemy(x, y) {
+    let best = null
+    let bd = Infinity
+    for (const e of this.enemies.getChildren()) {
+      if (e.dead) continue
+      const d = Phaser.Math.Distance.Squared(x, y, e.x, e.y)
+      if (d < bd) {
+        bd = d
+        best = e
+      }
+    }
+    return best
+  }
+
+  // A melee swing that catches an enemy orb deflects it: re-aim at the nearest
+  // foe (or straight back), boost its damage, and flag it friendly.
+  parryProjectile(orb) {
+    if (orb.friendly) return
+    orb.friendly = true
+    orb.dmg = (orb.dmg || 10) + 8
+    orb.critChance = 0.35
+    const tint = 0xbdfcff
+    orb.setTint(tint)
+    orb.popTint = tint
+    const target = this.nearestEnemy(orb.x, orb.y)
+    const SPEED = 250
+    if (target) {
+      const ang = Math.atan2(target.y - orb.y, target.x - orb.x)
+      orb.setVelocity(Math.cos(ang) * SPEED, Math.sin(ang) * SPEED)
+    } else {
+      orb.setVelocity(-orb.body.velocity.x * 1.5, -orb.body.velocity.y * 1.5)
+    }
+    CombatSystem.puff(this, orb.x, orb.y, tint)
+    CombatSystem.shake(this, 0.004, 90)
+    Audio.play(this, SFX.crit)
   }
 
   popVenom(orb) {
@@ -286,11 +342,25 @@ export default class GameScene extends Phaser.Scene {
       rect = new Phaser.Geom.Rectangle(x - 16, y + 2, 32, 28)
       base = atk + 10
     } else if (type === 'heavy') {
-      const cx = x + facing * 20
-      rect = new Phaser.Geom.Rectangle(cx - 22, y - 15, 44, 30)
-      base = atk + 16
-      critChance = 0.25
-      knock = 1.9
+      // Each hero's heavy is their signature: dash/cleave melee, a forward
+      // ground shockwave, or a ranged bolt.
+      const kit = heroKit(this.player.charKey)
+      const hv = kit.heavy
+      base = atk + hv.dmg
+      critChance = hv.crit
+      knock = hv.knock || 1
+      if (hv.kind === 'bolt') {
+        const orb = this.spawnBolt(x + facing * 12, y - 4, facing < 0 ? Math.PI : 0, kit.tint, base)
+        orb.friendly = true
+        orb.critChance = hv.crit
+        rect = null // ranged: no melee hitbox on this swing
+      } else {
+        const cx = x + facing * 20
+        rect = new Phaser.Geom.Rectangle(cx - hv.range, y - 15, hv.range * 2, 30)
+        if (hv.kind === 'wave') {
+          this.spawnShockwave(x, y, facing, { tint: kit.tint, dmg: atk + 6, friendly: true })
+        }
+      }
     } else {
       const cx = x + facing * 16
       rect = new Phaser.Geom.Rectangle(cx - 15, y - 13, 30, 26)
@@ -302,19 +372,28 @@ export default class GameScene extends Phaser.Scene {
 
     let hitAny = false
     let critAny = false
-    for (const enemy of this.enemies.getChildren()) {
-      if (enemy.dead) continue
-      if (Phaser.Geom.Intersects.RectangleToRectangle(rect, enemy.getBounds())) {
-        const { amount, isCrit } = CombatSystem.roll(base, { critChance, guaranteedCrit })
-        enemy.hurt(amount, isCrit, this.player.x)
-        if (knock > 1 && !enemy.dead) {
-          const away = enemy.x < this.player.x ? -1 : 1
-          enemy.setVelocityX(away * 90 * knock)
+    if (rect) {
+      for (const enemy of this.enemies.getChildren()) {
+        if (enemy.dead) continue
+        if (Phaser.Geom.Intersects.RectangleToRectangle(rect, enemy.getBounds())) {
+          const { amount, isCrit } = CombatSystem.roll(base, { critChance, guaranteedCrit })
+          enemy.hurt(amount, isCrit, this.player.x)
+          if (knock > 1 && !enemy.dead) {
+            const away = enemy.x < this.player.x ? -1 : 1
+            enemy.setVelocityX(away * 90 * knock)
+          }
+          hitAny = true
+          if (isCrit) {
+            critAny = true
+            CombatSystem.shake(this)
+          }
         }
-        hitAny = true
-        if (isCrit) {
-          critAny = true
-          CombatSystem.shake(this)
+      }
+      // The same swing deflects any enemy orb caught in its arc.
+      for (const orb of this.projectiles.getChildren()) {
+        if (!orb.active || orb.friendly) continue
+        if (Phaser.Geom.Intersects.RectangleToRectangle(rect, orb.getBounds())) {
+          this.parryProjectile(orb)
         }
       }
     }
@@ -335,7 +414,7 @@ export default class GameScene extends Phaser.Scene {
     let oy = y
     let angle = 0
     let scale = 0.6
-    let tint = 0xffe066
+    const tint = heroKit(this.player.charKey).tint
     let flip = facing < 0
     if (type === 'up') {
       ox = x
@@ -350,7 +429,6 @@ export default class GameScene extends Phaser.Scene {
     } else if (type === 'heavy') {
       ox = x + facing * 20
       scale = 0.9
-      tint = 0xff9a3c
     }
     const fx = this.add
       .sprite(ox, oy, 'slash')
