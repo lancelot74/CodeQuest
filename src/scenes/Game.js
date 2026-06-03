@@ -45,6 +45,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.buildBackground()
     this.buildTerrain()
+    this.buildScenery()
 
     const charKey = SaveSystem.data.character || 'ninja'
     this.player = new Player(this, this.spawn.x, this.spawn.y, charKey)
@@ -398,6 +399,77 @@ export default class GameScene extends Phaser.Scene {
     if (theme.bgTint) this.bg.setTint(theme.bgTint)
   }
 
+  // Atmospheric layers on top of the flat backdrop: a far parallax ridge, ground
+  // reeds, drifting marsh motes and a soft vignette. All asset-free (procedural).
+  buildScenery() {
+    const theme = TERRAIN_THEMES[this.worldId] || TERRAIN_THEMES.matlab
+    const w = GAME_WIDTH / CAM_ZOOM
+    const h = GAME_HEIGHT / CAM_ZOOM
+
+    // Far ridge, pinned low on the (camera-fixed) view; scrolled in update().
+    this.farBand = this.add
+      .tileSprite(-(w - GAME_WIDTH) / 2, GAME_HEIGHT + (h - GAME_HEIGHT) / 2, w, 96, 'hills')
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(-9)
+      .setAlpha(0.85)
+    if (theme.hillTint) this.farBand.setTint(theme.hillTint)
+
+    this.buildReeds(theme)
+
+    // Drifting fireflies/spores (screen-space ambience, behind characters).
+    this.motes = this.add
+      .particles(0, 0, 'spark', {
+        x: { min: -40, max: GAME_WIDTH + 40 },
+        y: { min: -20, max: GAME_HEIGHT + 20 },
+        speedY: { min: -22, max: -7 },
+        speedX: { min: -7, max: 7 },
+        scale: { start: 0.7, end: 0.1 },
+        alpha: { start: 0.55, end: 0 },
+        lifespan: 4200,
+        frequency: 240,
+        blendMode: 'ADD',
+        tint: theme.moteTint || 0xbfe9c4,
+      })
+      .setScrollFactor(0)
+      .setDepth(-7)
+
+    // Soft vignette for depth/focus (under HUD + level text).
+    this.vignette = this.add
+      .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'vignette')
+      .setScrollFactor(0)
+      .setDepth(38)
+      .setDisplaySize(w, h)
+  }
+
+  // Reeds rise from platform surfaces (solid tiles with open air above), placed
+  // deterministically and sparsely so they read as foliage, not clutter.
+  buildReeds(theme) {
+    const tint = theme.reedTint || 0x4f6f59
+    for (const key of this.solidSet) {
+      const [c, r] = key.split(',').map(Number)
+      if (this.solidSet.has(`${c},${r - 1}`)) continue // not a surface
+      if (this.ladderSet.has(`${c},${r}`)) continue
+      if ((c * 7 + r * 13) % 5 !== 0) continue // sparse
+      const reed = this.add
+        .image(c * TILE + TILE / 2, r * TILE + 1, 'reeds')
+        .setOrigin(0.5, 1)
+        .setDepth(1)
+        .setScale(0.7 + ((c * 17 + r * 5) % 5) * 0.12)
+        .setTint(tint)
+        .setAlpha(0.9)
+        .setFlipX((c & 1) === 0)
+      this.tweens.add({
+        targets: reed,
+        angle: { from: -3, to: 3 },
+        duration: 2200 + (c % 7) * 120,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.inOut',
+      })
+    }
+  }
+
   buildTerrain() {
     const grid = this.level.layout
     const rows = grid.length
@@ -540,6 +612,9 @@ export default class GameScene extends Phaser.Scene {
   update() {
     if (this.bg) {
       this.bg.tilePositionX = this.cameras.main.scrollX * 0.3
+    }
+    if (this.farBand) {
+      this.farBand.tilePositionX = this.cameras.main.scrollX * 0.55
     }
     if (this.player && !this.player.dead && this.player.y > this.worldH + 48) {
       this.player.die()
