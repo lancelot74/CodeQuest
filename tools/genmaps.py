@@ -215,97 +215,66 @@ def render(grid, path):
 
 # ---------------- level designs ----------------
 # Reachability budget (validator): jumps span <=4 columns and rise <=3 rows; bigger
-# rises need a climb() ladder. Pits are kept to 3 empty columns so a jump clears
-# them. Ground floors are two rows; ledges/platforms are one row.
+# rises need a climb() ladder. The levels are vertical towers: a two-row full-width
+# base plus single-row floors stacked ~5 rows apart and staggered left/right, each
+# linked to the next only by a climb() ladder (col must be interior to the upper
+# floor and grounded on the lower one). The base catches falls so they're recoverable.
 
 def lvl1():
-    # First Steps (reachPortal): a gentle, longer warm-up. Three ground spans linked
-    # by short jumps, a low ledge and a one-way step to teach verticality, a sniping
-    # Mage on the home stretch, then a ladder up to the portal perch. 5 Ooze + 1 Mage.
-    g = Grid(112, 22)
-    g.put(5, 1, 'P')
-    g.floor(18, 1, 30); g.floor(19, 1, 30)           # ground A
-    g.put(12, 17, 'E')                               # first ooze (easy)
-    g.floor(15, 18, 24)                              # low ledge L1
-    g.put(21, 14, 'E')                               # ooze on L1
-    g.floor(18, 34, 64); g.floor(19, 34, 64)         # ground B (gap 31..33)
-    g.put(44, 17, 'E')                               # ooze B
-    g.oneway(15, 40, 46)                             # one-way step (optional)
-    g.put(56, 17, 'M')                               # mage snipes the approach
-    g.floor(18, 68, 110); g.floor(19, 68, 110)       # ground C (gap 65..67)
-    g.put(78, 17, 'E')                               # ooze C
-    g.put(90, 17, 'E')                               # ooze C
-    g.floor(13, 95, 108)                             # portal perch
-    climb(g, 100, 13, 18)                            # ladder ground C -> perch
-    g.put(103, 12, 'O')
+    # First Steps (reachPortal): a gentle vertical warm-up. A nine-floor tower whose
+    # staggered ledges (alternating left/right) are linked only by ladders, so you
+    # climb from the ground spawn up to the portal perch, crossing each floor past a
+    # light enemy on the way. Full-width base catches any fall. 5 Ooze + 1 Mage.
+    g = Grid(40, 48)
+    g.floor(44, 1, 39); g.floor(45, 1, 39)           # F0 base (full width, safe landing)
+    g.put(4, 43, 'P')
+    g.floor(39, 12, 32); climb(g, 13, 39, 44); g.put(26, 38, 'E')   # F1
+    g.floor(34, 1, 21);  climb(g, 19, 34, 39); g.put(8, 33, 'E')    # F2
+    g.floor(29, 14, 34); climb(g, 20, 29, 34); g.put(28, 28, 'M')   # F3 (mage snipes)
+    g.floor(24, 2, 22);  climb(g, 15, 24, 29); g.put(10, 23, 'E')   # F4
+    g.floor(19, 14, 34); climb(g, 21, 19, 24); g.put(28, 18, 'E')   # F5
+    g.floor(14, 2, 22);  climb(g, 16, 14, 19); g.put(8, 13, 'E')    # F6
+    g.floor(9, 12, 30);  climb(g, 14, 9, 14)                        # F7
+    g.floor(4, 12, 26);  climb(g, 22, 4, 9)                         # F8 portal perch
+    g.put(20, 3, 'O')
     return 'matlab-01', 'First Steps', 'reachPortal', 'matlab-intro', g
 
 def lvl2():
-    # Marsh Path (reachPortal): a long low road guarded by two Demons, with an
-    # OPTIONAL high route (two ladders up to a Mage sniping the whole left side) and
-    # a mid platform Mage on the right. Ladder to the portal perch. 5 Ooze 2 Demon 2 Mage.
-    g = Grid(132, 23)
-    g.put(4, 1, 'P')
-    g.floor(20, 1, 44); g.floor(21, 1, 44)           # ground A
-    g.floor(20, 48, 88); g.floor(21, 48, 88)         # ground B (gap 45..47)
-    g.floor(20, 92, 130); g.floor(21, 92, 130)       # ground C (gap 89..91)
-    # optional high route over A
-    g.floor(14, 8, 20)                               # platform P1
-    climb(g, 16, 14, 20)                             # ladder A -> P1
-    g.put(11, 13, 'E')                               # ooze on P1
-    g.floor(9, 14, 24)                               # platform P2 (high)
-    climb(g, 18, 9, 14)                              # ladder P1 -> P2
-    g.put(21, 8, 'M')                                # sniping mage (high left)
-    # low road threats
-    g.put(34, 19, 'D')                               # demon A
-    g.put(54, 19, 'E')                               # ooze B
-    g.put(64, 19, 'D')                               # demon B
-    g.put(74, 19, 'E')                               # ooze B
-    g.put(108, 19, 'E')                              # ooze C (clear of the mid ladder at col100)
-    g.put(116, 19, 'E')                              # ooze C
-    # mid platform over C with a mage
-    g.floor(15, 96, 106)
-    climb(g, 100, 15, 20)
-    g.put(103, 14, 'M')
-    # portal perch
-    g.floor(15, 118, 129)
-    climb(g, 124, 15, 20)
-    g.put(126, 14, 'O')
+    # Marsh Path (reachPortal): a taller ten-floor climb that raises the threat. Same
+    # staggered-ladder tower, now guarded by two Demons (low floors) and two sniping
+    # Mages (mid floors) among the oozes. Full-width base. 5 Ooze 2 Demon 2 Mage.
+    g = Grid(44, 54)
+    g.floor(50, 1, 43); g.floor(51, 1, 43)           # F0 base
+    g.put(4, 49, 'P')
+    g.floor(45, 12, 36); climb(g, 14, 45, 50); g.put(26, 44, 'D')   # F1 demon
+    g.floor(40, 2, 26);  climb(g, 24, 40, 45); g.put(8, 39, 'E')    # F2
+    g.floor(35, 16, 40); climb(g, 18, 35, 40); g.put(34, 34, 'M')   # F3 mage
+    g.floor(30, 4, 28);  climb(g, 26, 30, 35); g.put(10, 29, 'E')   # F4
+    g.floor(25, 16, 40); climb(g, 20, 25, 30); g.put(34, 24, 'D')   # F5 demon
+    g.floor(20, 4, 28);  climb(g, 22, 20, 25); g.put(10, 19, 'E')   # F6
+    g.floor(15, 14, 38); climb(g, 16, 15, 20); g.put(32, 14, 'M')   # F7 mage
+    g.floor(10, 2, 26);  climb(g, 25, 10, 15); g.put(8, 9, 'E'); g.put(22, 9, 'E')  # F8
+    g.floor(5, 14, 30);  climb(g, 17, 5, 10)                        # F9 portal perch
+    g.put(24, 4, 'O')
     return 'matlab-02', 'Marsh Path', 'reachPortal', 'matlab-variables', g
 
 def lvl3():
-    # Reeds & Roots (defeatAll): the finale. Descend three left tiers (ooze, ooze,
-    # demon), brawl across a three-span arena (oozes + demons), then climb the right
-    # tiers past two Mages to the portal. 6 Ooze + 3 Demon + 2 Mage.
-    g = Grid(140, 25)
-    g.put(3, 1, 'P')
-    g.floor(6, 1, 12); g.floor(7, 1, 12)             # tier T1
-    g.put(8, 5, 'E')
-    g.floor(11, 8, 20)                               # tier T2
-    g.put(15, 10, 'E')
-    g.floor(16, 16, 30)                              # tier T3
-    g.put(24, 15, 'D')
-    # arena floor (three spans)
-    g.floor(22, 1, 46); g.floor(23, 1, 46)
-    g.floor(22, 50, 92); g.floor(23, 50, 92)         # gap 47..49
-    g.floor(22, 96, 139); g.floor(23, 96, 139)       # gap 93..95
-    g.put(12, 21, 'E')
-    g.put(36, 21, 'D')
-    g.put(60, 21, 'E')
-    g.put(78, 21, 'D')
-    g.put(108, 21, 'E')
-    g.put(124, 21, 'E')
-    # mid platform with a mage
-    g.floor(16, 54, 70)
-    climb(g, 58, 16, 22)
-    g.put(64, 15, 'M')
-    # right tiers up to the portal
-    g.floor(16, 100, 116)                            # R1
-    climb(g, 104, 16, 22)
-    g.floor(10, 112, 128)                            # R2
-    climb(g, 116, 10, 16)
-    g.put(122, 9, 'M')
-    g.put(126, 9, 'O')
+    # Reeds & Roots (defeatAll): the finale — a ten-floor tower you must clear top to
+    # bottom. Every floor holds a threat (oozes, three Demons, two Mages); the portal
+    # only opens once all are down. Full-width base. 6 Ooze + 3 Demon + 2 Mage.
+    g = Grid(46, 56)
+    g.floor(52, 1, 45); g.floor(53, 1, 45)           # F0 base
+    g.put(4, 51, 'P'); g.put(32, 51, 'E')            # base ooze
+    g.floor(47, 12, 38); climb(g, 14, 47, 52); g.put(24, 46, 'D')   # F1 demon
+    g.floor(42, 2, 28);  climb(g, 26, 42, 47); g.put(8, 41, 'E')    # F2
+    g.floor(37, 18, 44); climb(g, 20, 37, 42); g.put(36, 36, 'D')   # F3 demon
+    g.floor(32, 4, 30);  climb(g, 28, 32, 37); g.put(10, 31, 'E')   # F4
+    g.floor(27, 18, 44); climb(g, 22, 27, 32); g.put(40, 26, 'M')   # F5 mage
+    g.floor(22, 4, 30);  climb(g, 24, 22, 27); g.put(10, 21, 'E')   # F6
+    g.floor(17, 16, 42); climb(g, 18, 17, 22); g.put(34, 16, 'D')   # F7 demon
+    g.floor(12, 2, 28);  climb(g, 27, 12, 17); g.put(8, 11, 'E'); g.put(22, 11, 'E')  # F8
+    g.floor(6, 16, 34);  climb(g, 19, 6, 12); g.put(26, 5, 'M')     # F9 mage + portal
+    g.put(30, 5, 'O')
     return 'matlab-03', 'Reeds & Roots', 'defeatAll', 'matlab-arrays', g
 
 def main():

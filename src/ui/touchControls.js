@@ -1,13 +1,19 @@
 // On-screen touch controls (DOM overlay) for phones/tablets. DOM is used instead
 // of in-canvas buttons so multi-touch (move + jump + attack at once) works
-// natively and stays crisp regardless of the canvas FIT-scaling. Buttons just
-// write the shared TouchState; Player reads it. Shown only on touch devices and
-// only while a gameplay scene is active (z below the lesson card at 9999).
+// natively and stays crisp regardless of the canvas FIT-scaling. The left side is
+// an analog joystick (drag to move/climb in any direction); the right side has the
+// jump/attack buttons. Controls just write the shared TouchState; Player reads it.
+// Shown only on touch devices and only while a gameplay scene is active.
 import { TouchState, resetTouch } from '../systems/TouchState.js'
 
 let mounted = false
 let root = null
 let rotateEl = null
+let knobEl = null
+
+// Joystick drag state: which touch owns the stick, the base centre, and the max
+// knob travel (px). Direction thresholds are fractions of that travel.
+const STICK = { id: null, cx: 0, cy: 0, max: 36 }
 
 export function isTouchDevice() {
   if (typeof window === 'undefined') return false
@@ -31,11 +37,17 @@ const CSS = `
 #tc .tc-btn.tc-press { background: rgba(120,180,255,0.62);
   border-color: rgba(225,238,255,0.95); transform: scale(0.94); }
 #tc .tc-word { font-size: 14px; letter-spacing: 1px; }
-#tc-dpad { position: absolute; pointer-events: none;
-  left: calc(env(safe-area-inset-left) + 18px);
-  bottom: calc(env(safe-area-inset-bottom) + 18px);
-  display: grid; grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(3, 62px); gap: 6px; }
-#tc-dpad .tc-btn { position: static; width: 62px; height: 62px; border-radius: 14px; }
+/* analog joystick (bottom-left) */
+#tc-stick { position: absolute; pointer-events: auto; touch-action: none;
+  left: calc(env(safe-area-inset-left) + 20px);
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+  width: 128px; height: 128px; }
+#tc-stick .tc-base, #tc-stick .tc-knob { position: absolute;
+  background: url('assets/game/ui/joy-knob.png') center/100% 100% no-repeat;
+  image-rendering: pixelated; }
+#tc-stick .tc-base { inset: 0; opacity: 0.40; }
+#tc-stick .tc-knob { width: 56px; height: 56px; left: 36px; top: 36px; opacity: 0.92;
+  will-change: transform; transition: transform .03s linear; }
 #tc-act { position: absolute; pointer-events: none;
   right: calc(env(safe-area-inset-right) + 18px);
   bottom: calc(env(safe-area-inset-bottom) + 18px); width: 200px; height: 180px; }
@@ -51,6 +63,7 @@ const CSS = `
 @media (orientation: portrait) and (pointer: coarse) { #tc-rotate.tc-armed { display: flex; } }
 `
 
+// --- action buttons (jump / attack / heavy): each writes one TouchState flag ---
 function bind(el, key) {
   if (!el) return
   const press = (e) => {
@@ -72,6 +85,63 @@ function bind(el, key) {
   el.addEventListener('contextmenu', (e) => e.preventDefault())
 }
 
+// --- analog joystick: map the drag vector to the four direction flags ---
+function pointFor(e) {
+  if (e.changedTouches) {
+    for (const t of e.touches) if (t.identifier === STICK.id) return t
+    return null // our finger has lifted
+  }
+  return e // mouse
+}
+
+function stickStart(stickEl, e) {
+  e.preventDefault()
+  const t = e.changedTouches ? e.changedTouches[0] : e
+  STICK.id = e.changedTouches ? t.identifier : 'mouse'
+  const rect = stickEl.getBoundingClientRect()
+  STICK.cx = rect.left + rect.width / 2
+  STICK.cy = rect.top + rect.height / 2
+  stickMove(e)
+}
+
+function stickMove(e) {
+  if (STICK.id === null) return
+  const p = pointFor(e)
+  if (!p) return
+  if (e.cancelable) e.preventDefault()
+  let dx = p.clientX - STICK.cx
+  let dy = p.clientY - STICK.cy
+  const dist = Math.hypot(dx, dy) || 1
+  const m = STICK.max
+  if (dist > m) {
+    dx = (dx / dist) * m
+    dy = (dy / dist) * m
+  }
+  if (knobEl) knobEl.style.transform = `translate(${dx}px, ${dy}px)`
+  // Horizontal triggers easily; vertical needs a firmer push so casual left/right
+  // movement doesn't accidentally grab ladders or drop through platforms.
+  TouchState.left = dx < -m * 0.34
+  TouchState.right = dx > m * 0.34
+  TouchState.up = dy < -m * 0.42
+  TouchState.down = dy > m * 0.42
+}
+
+function stickEnd(e) {
+  if (STICK.id === null) return
+  if (e.changedTouches) {
+    let ours = false
+    for (const t of e.changedTouches) if (t.identifier === STICK.id) ours = true
+    if (!ours) return
+  }
+  STICK.id = null
+  recenterStick()
+}
+
+function recenterStick() {
+  if (knobEl) knobEl.style.transform = 'translate(0px, 0px)'
+  TouchState.left = TouchState.right = TouchState.up = TouchState.down = false
+}
+
 function mount() {
   if (mounted || typeof document === 'undefined') return
   mounted = true
@@ -83,11 +153,9 @@ function mount() {
   root = document.createElement('div')
   root.id = 'tc'
   root.innerHTML = `
-    <div id="tc-dpad">
-      <div class="tc-btn" data-k="up"    style="grid-column:2;grid-row:1">▲</div>
-      <div class="tc-btn" data-k="left"  style="grid-column:1;grid-row:2">◀</div>
-      <div class="tc-btn" data-k="right" style="grid-column:3;grid-row:2">▶</div>
-      <div class="tc-btn" data-k="down"  style="grid-column:2;grid-row:3">▼</div>
+    <div id="tc-stick">
+      <div class="tc-base"></div>
+      <div class="tc-knob"></div>
     </div>
     <div id="tc-act">
       <div class="tc-btn tc-word" id="btn-heavy">HVY</div>
@@ -101,7 +169,23 @@ function mount() {
   rotateEl.innerHTML = `<div class="tc-rot-icon">↻</div><div>Rotate to landscape to play</div>`
   document.body.appendChild(rotateEl)
 
-  root.querySelectorAll('#tc-dpad .tc-btn').forEach((el) => bind(el, el.dataset.k))
+  const stickEl = root.querySelector('#tc-stick')
+  knobEl = root.querySelector('#tc-stick .tc-knob')
+  stickEl.addEventListener('touchstart', (e) => stickStart(stickEl, e), { passive: false })
+  stickEl.addEventListener('touchmove', stickMove, { passive: false })
+  stickEl.addEventListener('touchend', stickEnd, { passive: false })
+  stickEl.addEventListener('touchcancel', stickEnd, { passive: false })
+  stickEl.addEventListener('mousedown', (e) => stickStart(stickEl, e))
+  window.addEventListener('mousemove', (e) => {
+    if (STICK.id === 'mouse') stickMove(e)
+  })
+  window.addEventListener('mouseup', () => {
+    if (STICK.id === 'mouse') {
+      STICK.id = null
+      recenterStick()
+    }
+  })
+
   bind(root.querySelector('#btn-jump'), 'jump')
   bind(root.querySelector('#btn-attack'), 'attackL')
   bind(root.querySelector('#btn-heavy'), 'attackH')
@@ -115,6 +199,8 @@ export function showTouchControls() {
 }
 
 export function hideTouchControls() {
+  STICK.id = null
+  recenterStick()
   root?.classList.remove('tc-on')
   rotateEl?.classList.remove('tc-armed')
   resetTouch() // drop any buttons still held when leaving the scene

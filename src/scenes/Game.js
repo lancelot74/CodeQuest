@@ -45,6 +45,9 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
+    // Phones: don't pull the camera back (it makes everything too small); desktop
+    // keeps the zoomed-out framing. Backdrop/scenery sizing reads this.camZoom.
+    this.camZoom = isTouchDevice() ? 1 : CAM_ZOOM
     this.buildBackground()
     this.buildTerrain()
     this.buildScenery()
@@ -80,7 +83,7 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldW, this.worldH)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
     this.cameras.main.setDeadzone(70, 50)
-    this.cameras.main.setZoom(CAM_ZOOM) // pull back a bit so more of the level is in frame
+    this.cameras.main.setZoom(this.camZoom) // pull back on desktop; 1:1 on phones
 
     this.buildPortal()
     this.setupObjective()
@@ -97,7 +100,7 @@ export default class GameScene extends Phaser.Scene {
 
   showControlsHint() {
     const hint = isTouchDevice()
-      ? 'Move and climb with the pad   JUMP to hop   ATK / HVY to attack'
+      ? 'Move and climb with the stick   JUMP to hop   ATK / HVY to attack'
       : 'Move A/D  Jump W  Climb W/S  Drop S  Slash J  Up W+J  Dive S+J  Heavy K'
     const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 16, hint, 7, '#aebbd6')
       .setScrollFactor(0)
@@ -468,8 +471,8 @@ export default class GameScene extends Phaser.Scene {
     // The gameplay camera is zoomed out (CAM_ZOOM < 1). scrollFactor-0 objects are
     // still scaled by the zoom, so a screen-sized backdrop would shrink and leave
     // gaps; size it to the zoomed-out viewport and recentre so it always fills.
-    const w = GAME_WIDTH / CAM_ZOOM
-    const h = GAME_HEIGHT / CAM_ZOOM
+    const w = GAME_WIDTH / this.camZoom
+    const h = GAME_HEIGHT / this.camZoom
     this.bg = this.add
       .tileSprite(-(w - GAME_WIDTH) / 2, -(h - GAME_HEIGHT) / 2, w, h, bgKey)
       .setOrigin(0, 0)
@@ -482,8 +485,8 @@ export default class GameScene extends Phaser.Scene {
   // reeds, drifting marsh motes and a soft vignette. All asset-free (procedural).
   buildScenery() {
     const theme = TERRAIN_THEMES[this.worldId] || TERRAIN_THEMES.matlab
-    const w = GAME_WIDTH / CAM_ZOOM
-    const h = GAME_HEIGHT / CAM_ZOOM
+    const w = GAME_WIDTH / this.camZoom
+    const h = GAME_HEIGHT / this.camZoom
 
     // Far ridge, pinned low on the (camera-fixed) view; scrolled in update().
     this.farBand = this.add
