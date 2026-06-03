@@ -11,6 +11,7 @@ import { pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
 
 const XP_PER_SLIME = 8
+const CAM_ZOOM = 0.8 // gameplay camera pull-back; backdrop sizing depends on this
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -74,7 +75,7 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldW, this.worldH)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
     this.cameras.main.setDeadzone(70, 50)
-    this.cameras.main.setZoom(0.8) // pull back a bit so more of the level is in frame
+    this.cameras.main.setZoom(CAM_ZOOM) // pull back a bit so more of the level is in frame
 
     this.buildPortal()
     this.setupObjective()
@@ -384,8 +385,13 @@ export default class GameScene extends Phaser.Scene {
   buildBackground() {
     const bgKey = this.worldDef?.bg || 'bg-blue'
     const theme = TERRAIN_THEMES[this.worldId] || TERRAIN_THEMES.matlab
+    // The gameplay camera is zoomed out (CAM_ZOOM < 1). scrollFactor-0 objects are
+    // still scaled by the zoom, so a screen-sized backdrop would shrink and leave
+    // gaps; size it to the zoomed-out viewport and recentre so it always fills.
+    const w = GAME_WIDTH / CAM_ZOOM
+    const h = GAME_HEIGHT / CAM_ZOOM
     this.bg = this.add
-      .tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, bgKey)
+      .tileSprite(-(w - GAME_WIDTH) / 2, -(h - GAME_HEIGHT) / 2, w, h, bgKey)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-10)
