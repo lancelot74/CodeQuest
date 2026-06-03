@@ -9,6 +9,7 @@ import { Audio, SFX } from '../systems/AudioSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
+import { showTouchControls, hideTouchControls, isTouchDevice } from '../ui/touchControls.js'
 
 const XP_PER_SLIME = 8
 const CAM_ZOOM = 0.8 // gameplay camera pull-back; backdrop sizing depends on this
@@ -82,20 +83,20 @@ export default class GameScene extends Phaser.Scene {
     this.setupObjective()
 
     this.scene.launch('HUD')
-    this.events.once('shutdown', () => this.scene.stop('HUD'))
+    showTouchControls()
+    this.events.once('shutdown', () => {
+      this.scene.stop('HUD')
+      hideTouchControls()
+    })
 
     this.showControlsHint()
   }
 
   showControlsHint() {
-    const t = pixelText(
-      this,
-      GAME_WIDTH / 2,
-      GAME_HEIGHT - 16,
-      'Move A/D  Jump W  Climb W/S  Drop S  Slash J  Up W+J  Dive S+J  Heavy K',
-      7,
-      '#aebbd6',
-    )
+    const hint = isTouchDevice()
+      ? 'Move and climb with the pad   JUMP to hop   ATK / HVY to attack'
+      : 'Move A/D  Jump W  Climb W/S  Drop S  Slash J  Up W+J  Dive S+J  Heavy K'
+    const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 16, hint, 7, '#aebbd6')
       .setScrollFactor(0)
       .setDepth(45)
     this.tweens.add({

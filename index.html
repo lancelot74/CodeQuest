@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>CodeQuest</title>
     <style>
       @font-face {
@@ -16,6 +19,11 @@
         height: 100%;
         background: #0b0d1a;
         overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
       }
       #game { width: 100vw; height: 100vh; }
       #game canvas { display: block; image-rendering: pixelated; }

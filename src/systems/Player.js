@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { SaveSystem } from './SaveSystem.js'
 import { CombatSystem } from './CombatSystem.js'
+import { TouchState, resetTouch } from './TouchState.js'
 
 const MAX_SPEED = 170
 const ACCEL_GROUND = 1700
@@ -56,12 +57,35 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.cursors = scene.input.keyboard.createCursorKeys()
     this.keys = scene.input.keyboard.addKeys({ w: 'W', a: 'A', s: 'S', d: 'D', j: 'J', k: 'K', x: 'X' })
 
+    // Virtual touch input (on-screen controls); ORed into the reads below.
+    resetTouch()
+    this.touch = TouchState
+    this._pJump = this._pLight = this._pHeavy = false
+    this.justJump = this.justLight = this.justHeavy = false
+
     this.play(`${charKey}-idle`)
+  }
+
+  // Keyboard ORed with touch for held directions.
+  get inLeft() { return this.cursors.left.isDown || this.keys.a.isDown || this.touch.left }
+  get inRight() { return this.cursors.right.isDown || this.keys.d.isDown || this.touch.right }
+  get inUp() { return this.cursors.up.isDown || this.keys.w.isDown || this.touch.up }
+  get inDown() { return this.cursors.down.isDown || this.keys.s.isDown || this.touch.down }
+
+  // Edge-detect the touch action buttons once per frame (mirrors keyboard JustDown).
+  sampleTouch() {
+    this.justJump = this.touch.jump && !this._pJump
+    this.justLight = this.touch.attackL && !this._pLight
+    this.justHeavy = this.touch.attackH && !this._pHeavy
+    this._pJump = this.touch.jump
+    this._pLight = this.touch.attackL
+    this._pHeavy = this.touch.attackH
   }
 
   preUpdate(time, delta) {
     super.preUpdate(time, delta)
     if (this.dead) return
+    this.sampleTouch()
     if (!this.controllable) {
       this.setAccelerationX(0)
       this.setVelocityX(0)
@@ -81,8 +105,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // --- Ladder climbing: grab when on a ladder and pressing up/down; while
     // climbing, gravity is off and movement is fully vertical until you step
     // off, reach the end, or hop away. It overrides normal movement.
-    const wantUp = this.cursors.up.isDown || this.keys.w.isDown
-    const wantDown = this.cursors.down.isDown || this.keys.s.isDown
+    const wantUp = this.inUp
+    const wantDown = this.inDown
     const onLadder = this.scene.isLadderAtPixel(this.x, this.y)
     this.dropThrough = wantDown && !this.climbing
     if (this.climbing) {
@@ -97,8 +121,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Acceleration + drag give momentum: snappy on the ground, but in the air
     // you can't instantly reverse or stop — you carry your speed and steer it.
-    const left = this.cursors.left.isDown || this.keys.a.isDown
-    const right = this.cursors.right.isDown || this.keys.d.isDown
+    const left = this.inLeft
+    const right = this.inRight
     const accel = onGround ? ACCEL_GROUND : ACCEL_AIR
     if (left && !right) {
       this.setAccelerationX(-accel)
@@ -116,7 +140,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const jumpPressed =
       Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
       Phaser.Input.Keyboard.JustDown(this.cursors.space) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.w)
+      Phaser.Input.Keyboard.JustDown(this.keys.w) ||
+      this.justJump
     if (jumpPressed) this.lastJumpAt = time
 
     const buffered = time - this.lastJumpAt <= BUFFER_MS
@@ -128,15 +153,16 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Variable jump height: releasing while rising cuts the ascent.
     const jumpHeld =
-      this.cursors.up.isDown || this.cursors.space.isDown || this.keys.w.isDown
+      this.cursors.up.isDown || this.cursors.space.isDown || this.keys.w.isDown || this.touch.jump
     if (this.jumpCutAvailable && !jumpHeld && this.body.velocity.y < 0) {
       this.setVelocityY(this.body.velocity.y * 0.5)
     }
 
     const lightPressed =
       Phaser.Input.Keyboard.JustDown(this.keys.j) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.x)
-    const heavyPressed = Phaser.Input.Keyboard.JustDown(this.keys.k)
+      Phaser.Input.Keyboard.JustDown(this.keys.x) ||
+      this.justLight
+    const heavyPressed = Phaser.Input.Keyboard.JustDown(this.keys.k) || this.justHeavy
     if (heavyPressed) this.attack(time, 'heavy')
     else if (lightPressed) this.attack(time, 'light')
 
@@ -176,7 +202,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     // Hop off the ladder with Space (Up/W are reserved for climbing up). The hop
     // counts as the first jump, leaving the air jump available on the way down.
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.space)) {
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.space) || this.justJump) {
       this.stopClimb()
       this.setVelocityY(-JUMP_V * 0.85)
       this.jumpCutAvailable = true
@@ -185,8 +211,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       return
     }
     this.setVelocityY(up ? -CLIMB_SPEED : down ? CLIMB_SPEED : 0)
-    const left = this.cursors.left.isDown || this.keys.a.isDown
-    const right = this.cursors.right.isDown || this.keys.d.isDown
+    const left = this.inLeft
+    const right = this.inRight
     this.setVelocityX(left ? -60 : right ? 60 : 0)
     this.play(`${this.charKey}-idle`, true)
   }
@@ -194,8 +220,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   attack(time, kind) {
     if (this.dead || time < this.attackReadyAt) return
     const onGround = this.body.blocked.down
-    const down = this.cursors.down.isDown || this.keys.s.isDown
-    const up = this.cursors.up.isDown || this.keys.w.isDown
+    const down = this.inDown
+    const up = this.inUp
 
     let type, cd
     if (kind === 'heavy') {
