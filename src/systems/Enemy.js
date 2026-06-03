@@ -14,6 +14,11 @@ const LUNGE_CD = 1500
 const SPIT_WINDUP = 280
 const SPIT_CD = 1700
 const RECOVER = 380
+const SLAM_WINDUP = 360 // demon telegraph before the leap-slam
+const SLAM_RANGE = 150 // demon slams when the player is within this (but past melee)
+const SLAM_CD = 2600
+const VOLLEY_WINDUP = 360 // mage telegraph before the triple-bolt fan
+const VOLLEY_CD = 3200
 
 // Per-type config. body = [width, height, offsetX, offsetY] in unscaled cell px;
 // origin is bottom-centre so y is the feet line. All three sheets face LEFT
@@ -29,13 +34,13 @@ const TYPES = {
     walk: 'demon-walk', death: 'demon-death',
     scale: 0.7, body: [42, 40, 11, 16],
     hp: 60, contact: 18, speed: 58,
-    lunge: true, spit: false, venom: 0x9be86a,
+    lunge: true, spit: false, slam: true, venom: 0x9be86a,
   },
   mage: {
     walk: 'mage-walk', death: 'mage-death',
     scale: 0.62, body: [30, 44, 10, 20],
     hp: 22, contact: 9, speed: 34,
-    lunge: false, spit: true, venom: 0xc77bff,
+    lunge: false, spit: true, volley: true, venom: 0xc77bff,
   },
 }
 
@@ -71,6 +76,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.stateUntil = 0
     this.nextLungeAt = 0
     this.nextSpitAt = 0
+    this.nextSlamAt = 0
+    this.nextVolleyAt = 0
+    this.slamArmAt = 0
     this.lungeActive = false
 
     this.play(cfg.walk)
@@ -101,11 +109,41 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       }
       return
     }
+    if (this.state === 'windupSlam') {
+      this.setVelocityX(0)
+      if (time >= this.stateUntil) {
+        this.state = 'slamAir'
+        this.slamArmAt = time + 180
+        this.stateUntil = time + 1300
+        this.setVelocityY(-300)
+        this.setVelocityX(this.dir * 110)
+      }
+      return
+    }
+    if (this.state === 'slamAir') {
+      if (time >= this.slamArmAt && (this.body.blocked.down || time >= this.stateUntil)) {
+        this.setVelocity(0, 0)
+        this.scene.spawnSlam(this.x, this.y)
+        this.state = 'recover'
+        this.stateUntil = time + RECOVER
+      }
+      return
+    }
     if (this.state === 'windupSpit') {
       this.setVelocityX(0)
       if (time >= this.stateUntil) {
         const p = this.scene.player
         if (p && !p.dead) this.scene.spawnVenom(this.x, this.y - 24, p.x, p.y - 10, this.cfg.venom)
+        this.state = 'recover'
+        this.stateUntil = time + RECOVER
+      }
+      return
+    }
+    if (this.state === 'windupVolley') {
+      this.setVelocityX(0)
+      if (time >= this.stateUntil) {
+        const p = this.scene.player
+        if (p && !p.dead) this.scene.spawnVolley(this.x, this.y - 24, p.x, p.y - 10, this.cfg.venom)
         this.state = 'recover'
         this.stateUntil = time + RECOVER
       }
@@ -131,9 +169,20 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
           this.nextLungeAt = time + LUNGE_CD
           return
         }
+        if (this.cfg.slam && ad <= SLAM_RANGE && time >= this.nextSlamAt) {
+          this.face(fdir)
+          this.beginAttack('windupSlam', SLAM_WINDUP)
+          this.nextSlamAt = time + SLAM_CD
+          return
+        }
         if (this.cfg.spit && ad > SPIT_MIN && ad < SPIT_MAX && time >= this.nextSpitAt) {
           this.face(fdir)
-          this.beginAttack('windupSpit', SPIT_WINDUP)
+          if (this.cfg.volley && time >= this.nextVolleyAt) {
+            this.beginAttack('windupVolley', VOLLEY_WINDUP)
+            this.nextVolleyAt = time + VOLLEY_CD
+          } else {
+            this.beginAttack('windupSpit', SPIT_WINDUP)
+          }
           this.nextSpitAt = time + SPIT_CD
           return
         }

@@ -208,23 +208,55 @@ export default class GameScene extends Phaser.Scene {
     Audio.play(this, SFX.hit)
   }
 
-  spawnVenom(x, y, targetX, targetY, tint = 0x9be86a) {
-    Audio.play(this, SFX.spit)
+  spawnBolt(x, y, ang, tint, dmg = 10) {
     const orb = this.projectiles.create(x, y, 'venom')
     orb.setDepth(7).setTint(tint)
     orb.popTint = tint
+    orb.dmg = dmg
     orb.body.setAllowGravity(false)
     orb.body.setCircle(6, 3, 3)
-    const ang = Math.atan2(targetY - y, targetX - x)
     const SPEED = 165
     orb.setVelocity(Math.cos(ang) * SPEED, Math.sin(ang) * SPEED)
     this.tweens.add({ targets: orb, angle: 360, duration: 700, repeat: -1 })
     this.time.delayedCall(2600, () => orb.active && orb.destroy())
+    return orb
+  }
+
+  spawnVenom(x, y, targetX, targetY, tint = 0x9be86a) {
+    Audio.play(this, SFX.spit)
+    this.spawnBolt(x, y, Math.atan2(targetY - y, targetX - x), tint)
+  }
+
+  // Mage's signature: a three-bolt fan aimed at the player.
+  spawnVolley(x, y, targetX, targetY, tint = 0xc77bff) {
+    Audio.play(this, SFX.spit)
+    const base = Math.atan2(targetY - y, targetX - x)
+    for (const off of [-0.32, 0, 0.32]) this.spawnBolt(x, y, base + off, tint)
+  }
+
+  // Demon's signature: leap-slam that throws a low shockwave each way along the ground.
+  spawnSlam(x, y) {
+    Audio.play(this, SFX.heavy)
+    this.cameras.main.shake(150, 0.007)
+    CombatSystem.puff(this, x, y - 6, 0xc9a06a)
+    this.spawnShockwave(x, y, -1)
+    this.spawnShockwave(x, y, 1)
+  }
+
+  spawnShockwave(x, y, dir, tint = 0xff8a3c) {
+    const orb = this.projectiles.create(x + dir * 14, y - 9, 'venom')
+    orb.setDepth(7).setTint(tint).setScale(1.6, 0.7)
+    orb.popTint = tint
+    orb.dmg = 14
+    orb.body.setAllowGravity(false)
+    orb.body.setCircle(6, 3, 3)
+    orb.setVelocity(dir * 150, 0)
+    this.time.delayedCall(1400, () => orb.active && orb.destroy())
   }
 
   onVenomHit(player, orb) {
     if (this.cleared || player.dead) return this.popVenom(orb)
-    player.hit(10, orb.x, this.time.now)
+    player.hit(orb.dmg || 10, orb.x, this.time.now)
     this.popVenom(orb)
   }
 
