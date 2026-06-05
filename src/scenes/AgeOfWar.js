@@ -9,7 +9,9 @@ const GROUND_Y = 300
 const BASE_MAX_HP = 300
 const START_COINS = 100
 const INCOME_RATE = 8 // coins per second
-const PROJ_SPEED = 240
+const PROJ_SPEED = 240 // homing single shot
+const VOLLEY_SPEED = 200 // mage fan bolts (straight)
+const WAVE_SPEED = 185 // demon slam shockwave (piercing)
 
 // A self-contained Age of War lane battle: spend coins to spawn monsters that
 // march right and fight an AI that spawns from the left-facing right base.
@@ -102,6 +104,7 @@ export default class AgeOfWarScene extends Phaser.Scene {
       .setDepth(9)
       .setScale(from.cfg.scale)
     if (from.cfg.projTint) orb.setTint(from.cfg.projTint)
+    orb._kind = 'homing'
     orb._target = target
     orb._side = from.side
     orb._dmg = from.cfg.attack
@@ -109,6 +112,45 @@ export default class AgeOfWarScene extends Phaser.Scene {
     orb._tintColor = from.cfg.projTint || 0xffffff
     orb._life = 0
     this.tweens.add({ targets: orb, angle: 360, duration: 600, repeat: -1 })
+    this.projectiles.push(orb)
+  }
+
+  // Mage signature: a three-bolt fan of straight (non-homing) bolts.
+  spawnVolley(from, target) {
+    const ox = from.x
+    const oy = from.y - from.displayHeight * 0.6
+    const base = Math.atan2(target.y - target.displayHeight * 0.5 - oy, target.x - ox)
+    for (const off of [-0.3, 0, 0.3]) {
+      const ang = base + off
+      const orb = this.add.image(ox, oy, 'venom').setDepth(9).setScale(from.cfg.scale)
+      if (from.cfg.projTint) orb.setTint(from.cfg.projTint)
+      orb._kind = 'straight'
+      orb._side = from.side
+      orb._dmg = from.cfg.specialDmg
+      orb._tintColor = from.cfg.projTint || 0xffffff
+      orb._vx = Math.cos(ang) * VOLLEY_SPEED
+      orb._vy = Math.sin(ang) * VOLLEY_SPEED
+      orb._life = 0
+      this.tweens.add({ targets: orb, angle: 360, duration: 600, repeat: -1 })
+      this.projectiles.push(orb)
+    }
+  }
+
+  // Demon signature: a wide, low shockwave that travels forward and pierces the
+  // front cluster, knocking each foe back once.
+  spawnWave(from) {
+    CombatSystem.shake(this, 0.006, 130)
+    CombatSystem.puff(this, from.x + from.dir * 14, from.y - 8, 0xc9a06a)
+    const orb = this.add.image(from.x + from.dir * 16, from.y - 9, 'venom').setDepth(9)
+    orb.setTint(0xff8a3c).setScale(1.7, 0.7)
+    orb._kind = 'wave'
+    orb._side = from.side
+    orb._dmg = from.cfg.specialDmg
+    orb._tintColor = 0xff8a3c
+    orb._vx = from.dir * WAVE_SPEED
+    orb._knock = from.cfg.knock || 10
+    orb._hit = new Set()
+    orb._life = 0
     this.projectiles.push(orb)
   }
 
@@ -120,29 +162,69 @@ export default class AgeOfWarScene extends Phaser.Scene {
         continue
       }
       orb._life += dt
-      let tgt = orb._target
-      if (!tgt || tgt.dead || !tgt.active) {
-        tgt = this.nearestUnitForProjectile(orb)
-        orb._target = tgt
-      }
-      if (tgt) {
-        const tx = tgt.x
-        const ty = tgt.y - tgt.displayHeight * 0.5
-        const ang = Math.atan2(ty - orb.y, tx - orb.x)
-        orb.x += Math.cos(ang) * PROJ_SPEED * dt
-        orb.y += Math.sin(ang) * PROJ_SPEED * dt
-        if (Math.abs(orb.x - tx) <= 16 && Math.abs(orb.y - ty) <= 16) {
-          const { amount, isCrit } = CombatSystem.roll(orb._dmg, { critChance: orb._type === 'mage' ? 0.18 : 0.08 })
-          tgt.hurt(amount, isCrit)
-          CombatSystem.puff(this, orb.x, orb.y, orb._tintColor)
-          this.killProj(orb)
-          continue
-        }
-      } else {
-        orb.x += (orb._side === 'player' ? 1 : -1) * PROJ_SPEED * dt
-      }
-      if (orb.x < -20 || orb.x > GAME_WIDTH + 20 || orb._life > 2.5) this.killProj(orb)
+      if (orb._kind === 'straight') this.stepStraight(orb, dt)
+      else if (orb._kind === 'wave') this.stepWave(orb, dt)
+      else this.stepHoming(orb, dt)
     }
+  }
+
+  stepHoming(orb, dt) {
+    let tgt = orb._target
+    if (!tgt || tgt.dead || !tgt.active) {
+      tgt = this.nearestUnitForProjectile(orb)
+      orb._target = tgt
+    }
+    if (tgt) {
+      const tx = tgt.x
+      const ty = tgt.y - tgt.displayHeight * 0.5
+      const ang = Math.atan2(ty - orb.y, tx - orb.x)
+      orb.x += Math.cos(ang) * PROJ_SPEED * dt
+      orb.y += Math.sin(ang) * PROJ_SPEED * dt
+      if (Math.abs(orb.x - tx) <= 16 && Math.abs(orb.y - ty) <= 16) {
+        const { amount, isCrit } = CombatSystem.roll(orb._dmg, { critChance: orb._type === 'mage' ? 0.18 : 0.08 })
+        tgt.hurt(amount, isCrit)
+        CombatSystem.puff(this, orb.x, orb.y, orb._tintColor)
+        this.killProj(orb)
+        return
+      }
+    } else {
+      orb.x += (orb._side === 'player' ? 1 : -1) * PROJ_SPEED * dt
+    }
+    if (orb.x < -20 || orb.x > GAME_WIDTH + 20 || orb._life > 2.5) this.killProj(orb)
+  }
+
+  stepStraight(orb, dt) {
+    orb.x += orb._vx * dt
+    orb.y += orb._vy * dt
+    const foes = orb._side === 'player' ? this.enemyUnits : this.playerUnits
+    for (const o of foes) {
+      if (!o || o.dead || !o.active) continue
+      if (Math.abs(o.x - orb.x) <= 14 && Math.abs(o.y - o.displayHeight * 0.5 - orb.y) <= 18) {
+        const { amount, isCrit } = CombatSystem.roll(orb._dmg, { critChance: 0.12 })
+        o.hurt(amount, isCrit)
+        CombatSystem.puff(this, orb.x, orb.y, orb._tintColor)
+        this.killProj(orb)
+        return
+      }
+    }
+    if (orb.x < -20 || orb.x > GAME_WIDTH + 20 || orb.y < -20 || orb.y > GAME_HEIGHT + 20 || orb._life > 2.2) {
+      this.killProj(orb)
+    }
+  }
+
+  stepWave(orb, dt) {
+    orb.x += orb._vx * dt
+    const foes = orb._side === 'player' ? this.enemyUnits : this.playerUnits
+    for (const o of foes) {
+      if (!o || o.dead || !o.active || orb._hit.has(o)) continue
+      if (Math.abs(o.x - orb.x) <= 24) {
+        orb._hit.add(o)
+        const { amount, isCrit } = CombatSystem.roll(orb._dmg, { critChance: 0.1 })
+        o.hurt(amount, isCrit)
+        o.x += Math.sign(orb._vx) * orb._knock
+      }
+    }
+    if (orb.x < -30 || orb.x > GAME_WIDTH + 30 || orb._life > 1.3) this.killProj(orb)
   }
 
   nearestUnitForProjectile(orb) {

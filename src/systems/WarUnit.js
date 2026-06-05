@@ -20,11 +20,13 @@ export const UNIT_TYPES = {
     label: 'MAGE', cost: 25, walk: 'mage-walk', death: 'mage-death',
     hp: 38, attack: 15, range: 150, cooldown: 1500, speed: 38,
     ranged: true, tint: 0xffffff, scale: 0.62, projTint: 0x7ad6ff, killReward: 12,
+    special: 'volley', specialCd: 3200, specialRange: 150, specialDmg: 11, // signature three-bolt fan
   },
   demon: {
     label: 'DEMON', cost: 50, walk: 'demon-walk', death: 'demon-death',
     hp: 150, attack: 22, range: 30, cooldown: 1000, speed: 48,
     ranged: false, tint: 0xff7a5a, scale: 0.74, projTint: null, killReward: 25,
+    special: 'slam', specialCd: 2600, specialRange: 100, specialDmg: 16, knock: 12, // signature piercing shockwave
   },
 }
 
@@ -44,6 +46,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
     this.maxHp = cfg.hp
     this.dead = false
     this.nextAttackAt = 0
+    this.nextSpecialAt = 0
     this.setOrigin(0.5, 1)
     this.setScale(cfg.scale)
     this.setTint(cfg.tint)
@@ -56,6 +59,17 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
     if (this.dead || !this.active) return
     const foes = this.side === 'player' ? this.scene.enemyUnits : this.scene.playerUnits
     const friends = this.side === 'player' ? this.scene.playerUnits : this.scene.enemyUnits
+
+    // Signature attack (mage volley / demon slam) on its own cooldown + reach.
+    if (this.cfg.special && time >= this.nextSpecialAt) {
+      const st = this.nearestFoeWithin(foes, this.cfg.specialRange)
+      if (st) {
+        this.doSpecial(st)
+        this.nextSpecialAt = time + this.cfg.specialCd
+        this.nextAttackAt = Math.max(this.nextAttackAt, time + 320) // brief recovery
+        return
+      }
+    }
 
     const target = this.nearestFoeInRange(foes)
     if (target) {
@@ -81,13 +95,17 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
   }
 
   nearestFoeInRange(foes) {
+    return this.nearestFoeWithin(foes, this.cfg.range)
+  }
+
+  nearestFoeWithin(foes, maxDist) {
     let best = null
     let bestDist = Infinity
     for (const o of foes) {
       if (!o || o.dead || !o.active) continue
       if ((o.x - this.x) * this.dir <= 0) continue // must be ahead
       const dist = Math.abs(o.x - this.x)
-      if (dist <= this.cfg.range && dist < bestDist) {
+      if (dist <= maxDist && dist < bestDist) {
         best = o
         bestDist = dist
       }
@@ -124,6 +142,17 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
         duration: 80,
         yoyo: true,
       })
+    }
+  }
+
+  doSpecial(target) {
+    if (this.cfg.special === 'volley') {
+      this.scene.spawnVolley(this, target) // three-bolt fan
+      Audio.play(this.scene, SFX.spit)
+    } else if (this.cfg.special === 'slam') {
+      this.scene.spawnWave(this) // forward piercing shockwave (shake/puff handled there)
+      Audio.play(this.scene, SFX.heavy)
+      this.scene.tweens.add({ targets: this, scaleY: this.cfg.scale * 0.82, duration: 90, yoyo: true })
     }
   }
 
