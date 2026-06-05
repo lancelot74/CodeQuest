@@ -45,6 +45,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
     this.hp = cfg.hp
     this.maxHp = cfg.hp
     this.dead = false
+    this.leaping = false
     this.nextAttackAt = 0
     this.nextSpecialAt = 0
     this.setOrigin(0.5, 1)
@@ -57,6 +58,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
 
   update(time, delta) {
     if (this.dead || !this.active) return
+    if (this.leaping) return // mid leap-slam; the landing tween drives it
     const foes = this.side === 'player' ? this.scene.enemyUnits : this.scene.playerUnits
     const friends = this.side === 'player' ? this.scene.playerUnits : this.scene.enemyUnits
 
@@ -150,9 +152,23 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
       this.scene.spawnVolley(this, target) // three-bolt fan
       Audio.play(this.scene, SFX.spit)
     } else if (this.cfg.special === 'slam') {
-      this.scene.spawnWave(this) // forward piercing shockwave (shake/puff handled there)
-      Audio.play(this.scene, SFX.heavy)
-      this.scene.tweens.add({ targets: this, scaleY: this.cfg.scale * 0.82, duration: 90, yoyo: true })
+      // Leap-slam: hop up and forward, then the shockwave lands on touchdown.
+      this.leaping = true
+      Audio.play(this.scene, SFX.jump)
+      this.scene.tweens.add({
+        targets: this,
+        y: this.y - 46,
+        duration: 200,
+        ease: 'Quad.out',
+        yoyo: true,
+        onComplete: () => {
+          this.leaping = false
+          if (this.dead || !this.active) return
+          Audio.play(this.scene, SFX.heavy)
+          this.scene.spawnWave(this) // shockwave + shake + dust on landing
+        },
+      })
+      this.scene.tweens.add({ targets: this, x: this.x + this.dir * 24, duration: 400, ease: 'Quad.out' })
     }
   }
 
