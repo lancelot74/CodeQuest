@@ -70,6 +70,38 @@ export function createPlaceholderTextures(scene) {
   R.generateTexture('reeds', 44, 56)
   R.destroy()
 
+  // --- Slime (Age of War unit): drawn white, tinted green at use; 2-frame bob.
+  // Origin is set bottom-anchored by the consumer; shadow sits near the base. ---
+  const slimeFrame = (squash) => {
+    const S = scene.make.graphics({ x: 0, y: 0, add: false })
+    const cy = squash ? 16 : 14
+    const bw = squash ? 28 : 24
+    const bh = squash ? 14 : 18
+    S.fillStyle(0x000000, 0.18)
+    S.fillEllipse(15, 22, bw + 2, 6) // ground shadow
+    S.fillStyle(0xffffff, 1)
+    S.fillEllipse(15, cy, bw, bh) // body blob
+    S.fillStyle(0x1a1a1a, 1)
+    S.fillCircle(11, cy - 2, 2) // eyes (stay dark under tint)
+    S.fillCircle(19, cy - 2, 2)
+    S.fillRect(13, cy + 3, 4, 1) // mouth
+    return S
+  }
+  const sa = slimeFrame(false)
+  sa.generateTexture('slime-a', 30, 24)
+  sa.destroy()
+  const sb = slimeFrame(true)
+  sb.generateTexture('slime-b', 30, 24)
+  sb.destroy()
+  if (!scene.anims.exists('slime-walk')) {
+    scene.anims.create({
+      key: 'slime-walk',
+      frames: [{ key: 'slime-a' }, { key: 'slime-b' }],
+      frameRate: 5,
+      repeat: -1,
+    })
+  }
+
   // --- Vignette (radial darkening, alpha edges) overlaid on the gameplay camera ---
   const vg = scene.textures.createCanvas('vignette', 128, 80)
   if (vg) {

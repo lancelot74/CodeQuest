@@ -10,6 +10,7 @@ import GameScene from './scenes/Game.js'
 import HUDScene from './scenes/HUD.js'
 import GameOverScene from './scenes/GameOver.js'
 import CodexScene from './scenes/Codex.js'
+import AgeOfWarScene from './scenes/AgeOfWar.js'
 
 new Phaser.Game(
   createConfig([
@@ -23,5 +24,6 @@ new Phaser.Game(
     HUDScene,
     GameOverScene,
     CodexScene,
+    AgeOfWarScene,
   ]),
 )
