@@ -73,19 +73,20 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     const s = this.scene
     const p = s.player
     const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y)
+    const sr = s.senseRangeMul || 1 // boss.senseRange++ power widens every sense
     if (this.senseKey === 'sight') {
-      if (d > SIGHT_RANGE || !s.playerLit() || !s.losClear(this.x, this.y, p.x, p.y)) return { sig: 0 }
-      const near = 1 - d / SIGHT_RANGE
+      if (d > SIGHT_RANGE * sr || !s.playerLit() || !s.losClear(this.x, this.y, p.x, p.y)) return { sig: 0 }
+      const near = 1 - d / (SIGHT_RANGE * sr)
       return { sig: near * (s.playerMoving ? 1 : 0.45), x: p.x, y: p.y }
     }
     if (this.senseKey === 'hearing') {
-      if (d > HEAR_RANGE) return { sig: 0 }
+      if (d > HEAR_RANGE * sr) return { sig: 0 }
       const loud = s.playerLoudness // 0..~1.3
-      const sig = loud * (1 - d / HEAR_RANGE)
+      const sig = loud * (1 - d / (HEAR_RANGE * sr))
       return sig > 0.02 ? { sig, x: p.x, y: p.y } : { sig: 0 }
     }
     // smell — follows a decaying scent trail; ignores walls and silence, beaten by distance
-    const sc = s.smellQuery(this.x, this.y, SMELL_RANGE)
+    const sc = s.smellQuery(this.x, this.y, SMELL_RANGE * sr)
     if (!sc) return { sig: 0 }
     return { sig: sc.sig, x: sc.x, y: sc.y }
   }
@@ -106,7 +107,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (sig > 0) {
-      this.awareness = Math.min(1, this.awareness + AWARE_UP * sig * dt)
+      this.awareness = Math.min(1, this.awareness + AWARE_UP * (s.awareUpMul || 1) * sig * dt)
       this.lastCue = { x, y }
       this.lostTimer = 0
     } else {
@@ -121,7 +122,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       // only a live signal pinpoints you; once lost, it runs down the last cue
       const tx = sig > 0 ? p.x : this.lastCue.x
       const ty = sig > 0 ? p.y : this.lastCue.y
-      this.moveToward(tx, ty, CHASE_SPEED, dt)
+      this.moveToward(tx, ty, CHASE_SPEED * (s.chaseSpeedMul || 1), dt)
       if (sig > 0) this.tryAttack(dt)
     } else if (this.mode === 'STUNNED') {
       this.body.setVelocity(0, 0) // winded after a rage: frozen in place
@@ -242,7 +243,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     const p = this.scene.player
     const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y)
     if (this.attackTimer > 0 || d > ATTACK_RANGE) return
-    this.attackTimer = ATTACK_CD
+    this.attackTimer = ATTACK_CD * (this.scene.atkCdMul || 1) // boss.attackSpeed++ shortens this
     this.setTint(0xffffff)
     this.scene.time.delayedCall(WINDUP * 1000, () => {
       if (!this.active) return
