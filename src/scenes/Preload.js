@@ -51,7 +51,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('hunt-hero', `${HUNT}/characters/hero.png`)
     this.load.image('hunt-golem', `${HUNT}/characters/golem.png`)
     this.load.image('hunt-coin', `${HUNT}/spritesheet/ui_coin.png`)
-    for (const p of ['tree', 'big_stone', 'mid_stone', 'chest_closed', 'skull', 'sign']) {
+    for (const p of ['tree', 'big_stone', 'mid_stone', 'small_stone', 'chest_closed', 'skull', 'sign']) {
       this.load.image(`hunt-${p}`, `${HUNT}/spritesheet/props_${p}.png`)
     }
 

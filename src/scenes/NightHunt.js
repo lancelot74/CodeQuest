@@ -3,6 +3,9 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { pixelText, panelButton, uiPanel } from '../ui/widgets.js'
 import { Audio, SFX } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
+import { SaveSystem } from '../systems/SaveSystem.js'
+import { TouchState } from '../systems/TouchState.js'
+import { showTouchControls, hideTouchControls } from '../ui/touchControls.js'
 import Hunter, { SENSES, SKINS } from '../systems/Hunter.js'
 
 const TILE = 24
@@ -13,17 +16,41 @@ const WORLD_H = WORLD_ROWS * TILE // 816
 
 const WALK_SPEED = 96
 const SPRINT_SPEED = 168
-const LIGHT_RADIUS = 104
-const SMALL_LIGHT = 48
+const LIGHT_RADIUS = 104 // player light WITH a torch
+const SMALL_LIGHT = 48 // player light without a torch (immediate surroundings only)
+const TORCH_LIGHT = 80 // ambient pool cast by a map torch
 const OBJ_RADIUS = 34
 const OBJ_HOLD = 1.5 // seconds to channel an objective
 const EXIT_RADIUS = 30
 const CATCH_DIST = 22
+const PICKUP_DIST = 26
+const NUM_STONES = 5
+const NUM_TORCHES = 5
 const VOLLEY_SPEED = 200
 const WAVE_SPEED = 180
 const HOMING_SPEED = 210
 
+// dash stamina: sprinting drains it; emptying it forces a walk until it recovers
+// past STAM_FLOOR. Tuned so a sprint lasts a few seconds, not forever.
+const STAM_MAX = 1
+const STAM_DRAIN = 0.55
+const STAM_REGEN = 0.4
+const STAM_FLOOR = 0.25
+
 const GRASS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 16, 18, 21, 33]
+
+// Pickable heroes. The four platformer heroes are animated 32px sheets; Knight and
+// Golem are single-frame hunt-pack images (faked locomotion via a squash bob).
+// 'anim' heroes play `${key}-run/-idle`; 'static' heroes just bob + flip.
+const HEROES = [
+  { key: 'ninja', label: 'FROG', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
+  { key: 'pink', label: 'PINK', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
+  { key: 'mask', label: 'MASK', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
+  { key: 'virtual', label: 'VIRTUAL', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
+  { key: 'hunt-hero', label: 'KNIGHT', kind: 'static', scale: 0.62, origin: 0.62, body: [20, 14] },
+  { key: 'hunt-golem', label: 'GOLEM', kind: 'static', scale: 0.95, origin: 0.62, body: [16, 12] },
+]
+const TOUCH_LABELS = { jump: 'RUN', attack: 'USE', heavy: 'LURE' }
 
 // NIGHT HUNT — a top-down survival-horror roguelite (Cobb Can Move-style). Roam a
 // dark forest doing 3 objectives and reach the exit while ONE stalker hunts you;
@@ -35,6 +62,12 @@ export default class NightHuntScene extends Phaser.Scene {
 
   create(data) {
     this.round = data?.round || 1
+    // hero: NIGHT HUNT-local pick (registry) defaulting to the saved character
+    const wanted = this.registry.get('huntHero') || SaveSystem.data.character
+    this.heroKey = HEROES.some((h) => h.key === wanted) ? wanted : 'ninja'
+    this.hero = HEROES.find((h) => h.key === this.heroKey)
+    this._prevLureBtn = false
+    this.interacting = false
     this.gameOver = false
     this.spawn = { x: WORLD_W / 2, y: WORLD_H / 2 }
     this.objectives = []
@@ -45,7 +78,12 @@ export default class NightHuntScene extends Phaser.Scene {
     this._stepT = 0
     this.faceX = 1
     this.faceY = 0
-    this.lures = 3
+    this.lures = 0
+    this.stamina = STAM_MAX
+    this.exhausted = false
+    this.hasTorch = false
+    this.torches = []
+    this.stones = []
     this.playerMoving = false
     this.playerLoudness = 0
     this.playerMoveFactor = 0
@@ -64,7 +102,10 @@ export default class NightHuntScene extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,H,UP,DOWN,LEFT,RIGHT')
+
+    showTouchControls(TOUCH_LABELS)
+    this.events.once('shutdown', () => hideTouchControls())
 
     this.startRound()
   }
@@ -124,22 +165,40 @@ export default class NightHuntScene extends Phaser.Scene {
 
   // ---- player ---------------------------------------------------------------
   buildPlayer() {
+    const h = this.hero
     this.playerShadow = this.add.ellipse(this.spawn.x, this.spawn.y, 20, 7, 0x000000, 0.32)
-    this.player = this.physics.add.sprite(this.spawn.x, this.spawn.y, 'ninja-idle').setOrigin(0.5, 0.72).setScale(1.05)
-    this.player.play('ninja-idle')
+    const tex = h.kind === 'anim' ? `${h.key}-idle` : h.key
+    this.player = this.physics.add.sprite(this.spawn.x, this.spawn.y, tex).setOrigin(0.5, h.origin).setScale(h.scale)
+    if (h.kind === 'anim') this.player.play(`${h.key}-idle`)
     this.player.body.setAllowGravity(false)
     this.player.setCollideWorldBounds(true)
-    this.player.body.setSize(16, 14)
-    this.player.body.setOffset(8, 15)
+    this.player.body.setSize(h.body[0], h.body[1])
+    if (h.off) this.player.body.setOffset(h.off[0], h.off[1])
     this.physics.add.collider(this.player, this.wallZones)
+
+    // little flame the hero holds once they pick up a torch
+    this.carryFlame = this.add.ellipse(this.spawn.x, this.spawn.y, 7, 12, 0xffd86b, 1).setVisible(false)
   }
 
   handlePlayer(dt, time) {
     const k = this.keys
-    let ax = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0)
-    let ay = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0)
-    const sprint = k.SHIFT.isDown
+    const t = TouchState
+    let ax = (k.D.isDown || k.RIGHT.isDown || t.right ? 1 : 0) - (k.A.isDown || k.LEFT.isDown || t.left ? 1 : 0)
+    let ay = (k.S.isDown || k.DOWN.isDown || t.down ? 1 : 0) - (k.W.isDown || k.UP.isDown || t.up ? 1 : 0)
+    this.interacting = k.E.isDown || t.attackL
     const moving = ax !== 0 || ay !== 0
+
+    // stamina-gated dash: drains while sprinting, recovers otherwise; once emptied
+    // you're locked to a walk until it climbs back past STAM_FLOOR
+    const wantSprint = (k.SHIFT.isDown || t.jump) && moving
+    const sprint = wantSprint && this.stamina > 0 && !this.exhausted
+    if (sprint) {
+      this.stamina = Math.max(0, this.stamina - STAM_DRAIN * dt)
+      if (this.stamina === 0) this.exhausted = true
+    } else {
+      this.stamina = Math.min(STAM_MAX, this.stamina + STAM_REGEN * dt)
+      if (this.exhausted && this.stamina >= STAM_FLOOR) this.exhausted = false
+    }
     const speed = sprint ? SPRINT_SPEED : WALK_SPEED
     if (moving) {
       const l = Math.hypot(ax, ay)
@@ -157,9 +216,13 @@ export default class NightHuntScene extends Phaser.Scene {
       this.faceX = ax
       this.faceY = ay
       if (Math.abs(ax) > 0.02) this.player.flipX = ax < 0
-      if (this.player.anims.getName() !== 'ninja-run') this.player.play('ninja-run')
-    } else if (this.player.anims.getName() !== 'ninja-idle') {
-      this.player.play('ninja-idle')
+    }
+    if (this.hero.kind === 'anim') {
+      const want = moving ? `${this.hero.key}-run` : `${this.hero.key}-idle`
+      if (this.player.anims.getName() !== want) this.player.play(want)
+    } else {
+      // single-frame hero: fake a walk with a vertical squash
+      this.player.scaleY = moving ? this.hero.scale * (1 + 0.06 * Math.sin(time / 70)) : this.hero.scale
     }
 
     // footsteps: cadence scales with speed; only audible while actually moving
@@ -175,6 +238,13 @@ export default class NightHuntScene extends Phaser.Scene {
 
     this.player.setDepth(this.player.y)
     this.playerShadow.setPosition(this.player.x, this.player.y + this.player.displayHeight * 0.22).setDepth(this.player.y - 1)
+
+    if (this.hasTorch) {
+      this.carryFlame
+        .setPosition(this.player.x + 7, this.player.y - this.player.displayHeight * 0.5)
+        .setDepth(this.player.y + 1)
+        .setScale(1, 1 + 0.18 * Math.sin(time / 110))
+    }
   }
 
   // Throw a pebble in the facing direction. It lands, makes a loud noise and yanks
@@ -208,6 +278,16 @@ export default class NightHuntScene extends Phaser.Scene {
       },
     })
     this.updateLureHud()
+  }
+
+  // Swap to the next hero in the roster. Stored in the registry (session-scoped, so
+  // it doesn't touch the platformer's saved character) and applied via a clean restart.
+  cycleHero() {
+    const i = HEROES.findIndex((h) => h.key === this.heroKey)
+    const next = HEROES[(i + 1) % HEROES.length]
+    this.registry.set('huntHero', next.key)
+    Audio.play(this, SFX.click)
+    this.scene.restart({ round: this.round })
   }
 
   updateScent(dt) {
@@ -271,11 +351,16 @@ export default class NightHuntScene extends Phaser.Scene {
     this.player.setPosition(this.spawn.x, this.spawn.y)
     this.player.body.setVelocity(0, 0)
     this.scent.length = 0
-    this.lures = 3
+    this.lures = 0
+    this.stamina = STAM_MAX
+    this.exhausted = false
+    this.setTorch(false)
     this.updateLureHud()
 
     this.placeObjectives()
     this.placeExit()
+    this.placeStones()
+    this.placeTorches()
     this.spawnHunter()
 
     this.roundText.setText('ROUND ' + this.round)
@@ -291,6 +376,13 @@ export default class NightHuntScene extends Phaser.Scene {
       o.ring.destroy()
     }
     this.objectives = []
+    for (const s of this.stones) s.destroy()
+    this.stones = []
+    for (const tr of this.torches) {
+      tr.flame.destroy()
+      tr.glow.destroy()
+    }
+    this.torches = []
     if (this.exit) {
       this.exit.destroy()
       this.exit = null
@@ -341,6 +433,55 @@ export default class NightHuntScene extends Phaser.Scene {
     this.hunterCollider = this.physics.add.collider(this.hunter, this.wallZones)
   }
 
+  // lure stones: walk over one to pocket it (your only source of throwables)
+  placeStones() {
+    for (const pt of this.spreadPoints(NUM_STONES, 120, 120)) {
+      this.stones.push(this.add.image(pt.x, pt.y, 'hunt-small_stone').setOrigin(0.5, 0.7).setScale(1.6).setDepth(pt.y))
+    }
+  }
+
+  // map torches: ambient light pools you navigate by; grab one to carry (wide light,
+  // but it makes you visible to a nearby hunter)
+  placeTorches() {
+    for (const pt of this.spreadPoints(NUM_TORCHES, 150, 170)) {
+      const glow = this.add.ellipse(pt.x, pt.y - 10, 14, 10, 0xffb24a, 0.85).setDepth(pt.y)
+      const flame = this.add.ellipse(pt.x, pt.y - 16, 7, 13, 0xffd86b, 1).setDepth(pt.y + 1)
+      this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.78, yoyo: true, repeat: -1, duration: 300, ease: 'Sine.easeInOut' })
+      this.torches.push({ x: pt.x, y: pt.y - 12, flame, glow })
+    }
+  }
+
+  handlePickups() {
+    for (const s of [...this.stones]) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, s.x, s.y) < PICKUP_DIST) {
+        this.stones.splice(this.stones.indexOf(s), 1)
+        CombatSystem.puff(this, s.x, s.y - 4, 0xb6c2d8)
+        s.destroy()
+        this.lures++
+        Audio.play(this, SFX.click)
+        this.updateLureHud()
+      }
+    }
+    if (this.hasTorch) return
+    for (const tr of this.torches) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, tr.x, tr.y) < PICKUP_DIST) {
+        this.torches.splice(this.torches.indexOf(tr), 1)
+        tr.flame.destroy()
+        tr.glow.destroy()
+        this.setTorch(true)
+        Audio.play(this, SFX.levelUp)
+        this.flashBanner('TORCH LIT', '#ffb24a')
+        break
+      }
+    }
+  }
+
+  setTorch(on) {
+    this.hasTorch = on
+    if (this.carryFlame) this.carryFlame.setVisible(on)
+    this.updateTorchHud()
+  }
+
   roundCleared() {
     if (this.gameOver) return
     Audio.play(this, SFX.clear)
@@ -357,7 +498,7 @@ export default class NightHuntScene extends Phaser.Scene {
       if (!o.done) {
         remaining++
         const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, o.x, o.y)
-        if (d < OBJ_RADIUS && this.keys.E.isDown) {
+        if (d < OBJ_RADIUS && this.interacting) {
           o.progress = Math.min(1, o.progress + dt / OBJ_HOLD)
           this._burst = Math.max(this._burst, 0.5) // channeling is audible
           if (o.progress >= 1) {
@@ -495,6 +636,7 @@ export default class NightHuntScene extends Phaser.Scene {
   makeLights() {
     this.makeLight('hunt-light', LIGHT_RADIUS, 1)
     this.makeLight('hunt-light-sm', SMALL_LIGHT, 0.55)
+    this.makeLight('hunt-torch-light', TORCH_LIGHT, 0.9)
   }
 
   makeLight(key, radius, peak) {
@@ -522,9 +664,16 @@ export default class NightHuntScene extends Phaser.Scene {
     const cam = this.cameras.main
     this.fog.clear()
     this.fog.fill(0x05060a, 0.97)
+    // ambient torch pools first
+    for (const tr of this.torches) {
+      this.fog.erase('hunt-torch-light', tr.x - cam.scrollX - TORCH_LIGHT, tr.y - cam.scrollY - TORCH_LIGHT)
+    }
+    // player light: tiny without a torch, wide once one is picked up
+    const pr = this.hasTorch ? LIGHT_RADIUS : SMALL_LIGHT
+    const pkey = this.hasTorch ? 'hunt-light' : 'hunt-light-sm'
     const sx = this.player.x - cam.scrollX
     const sy = this.player.y - cam.scrollY
-    this.fog.erase('hunt-light', sx - LIGHT_RADIUS, sy - LIGHT_RADIUS)
+    this.fog.erase(pkey, sx - pr, sy - pr)
     if (this.hunter && this.hunter.mode === 'CHASE') {
       const hx = this.hunter.x - cam.scrollX
       const hy = this.hunter.y - cam.scrollY
@@ -549,16 +698,35 @@ export default class NightHuntScene extends Phaser.Scene {
     menu.bg.setScrollFactor(0)
     menu.text.setScrollFactor(0)
 
-    // lure ammo + a persistent controls hint so the inputs are discoverable
-    this.lureText = pixelText(this, 12, 30, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
-    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E interact  Q lure', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    // stamina bar (next to ROUND), lure ammo, torch state, hero + controls hint
+    this.staminaBar = this.add.graphics().setScrollFactor(0).setDepth(9500)
+    this.lureText = pixelText(this, 12, 32, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    this.torchText = pixelText(this, 12, 46, '', 8, '#ffb24a').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, 60, 'HERO ' + this.hero.label + '  [H]', 8, '#9fb0d6').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use  Q lure  H hero', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
 
     // world-space prompt that hovers over the nearest interactable
     this.prompt = pixelText(this, 0, 0, '', 8, '#ffe066').setOrigin(0.5, 1).setDepth(9400).setVisible(false)
   }
 
   updateLureHud() {
-    if (this.lureText) this.lureText.setText('LURES ' + this.lures + '/3   [Q]')
+    if (this.lureText) this.lureText.setText('LURES ' + this.lures + '   [Q]')
+  }
+
+  updateTorchHud() {
+    if (!this.torchText) return
+    this.torchText.setText(this.hasTorch ? 'TORCH  lit (seen!)' : 'NO TORCH').setColor(this.hasTorch ? '#ffb24a' : '#7e8aa8')
+  }
+
+  drawStamina() {
+    const g = this.staminaBar
+    g.clear()
+    const x = 96
+    const y = 11
+    const w = 68
+    const h = 7
+    g.fillStyle(0x0a0c14, 0.7).fillRect(x - 1, y - 1, w + 2, h + 2)
+    g.fillStyle(this.exhausted ? 0xe06a6a : 0x7cfc98, 1).fillRect(x, y, w * this.stamina, h)
   }
 
   // Float a "HOLD E" / "ENTER" hint over the closest objective or the open exit.
@@ -666,8 +834,16 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     const dt = delta / 1000
     this.handlePlayer(dt, time)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.Q)) this.throwLure()
+    if (Phaser.Input.Keyboard.JustDown(this.keys.H)) {
+      this.cycleHero()
+      return
+    }
+    const lureBtn = TouchState.attackH
+    if (Phaser.Input.Keyboard.JustDown(this.keys.Q) || (lureBtn && !this._prevLureBtn)) this.throwLure()
+    this._prevLureBtn = lureBtn
     this.updateScent(dt)
+    this.handlePickups()
+    this.drawStamina()
     if (this.hunter) this.hunter.think(dt)
     this.updateProjectiles(dt)
     this.handleObjectives(dt)

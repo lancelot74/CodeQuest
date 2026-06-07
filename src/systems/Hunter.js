@@ -28,6 +28,7 @@ const CALM_TIME = 2.2 // cooldown spent wandering before going back on patrol
 const ATTACK_RANGE = 220
 const ATTACK_CD = 1.7
 const WINDUP = 0.28 // telegraph before a detection attack fires (fairness)
+const TORCH_SEEN_RANGE = 240 // carrying a lit torch makes you visible within this radius
 
 export default class Hunter extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, skinKey, senseKey) {
@@ -82,7 +83,20 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
   }
 
   think(dt) {
-    const { sig, x, y } = this.senseSignal()
+    let { sig, x, y } = this.senseSignal()
+    // a carried torch betrays you regardless of the active sense, if in line of sight
+    const s = this.scene
+    if (s.hasTorch) {
+      const td = Phaser.Math.Distance.Between(this.x, this.y, s.player.x, s.player.y)
+      if (td < TORCH_SEEN_RANGE && s.losClear(this.x, this.y, s.player.x, s.player.y)) {
+        const tsig = 1 - td / TORCH_SEEN_RANGE
+        if (tsig > sig) {
+          sig = tsig
+          x = s.player.x
+          y = s.player.y
+        }
+      }
+    }
     if (sig > 0) {
       this.awareness = Math.min(1, this.awareness + AWARE_UP * sig * dt)
       this.lastCue = { x, y }

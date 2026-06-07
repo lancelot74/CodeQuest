@@ -10,6 +10,9 @@ let mounted = false
 let root = null
 let rotateEl = null
 let knobEl = null
+let jumpEl = null
+let attackEl = null
+let heavyEl = null
 
 // Joystick drag state: which touch owns the stick, the base centre, and the max
 // knob travel (px). Direction thresholds are fractions of that travel.
@@ -186,14 +189,23 @@ function mount() {
     }
   })
 
-  bind(root.querySelector('#btn-jump'), 'jump')
-  bind(root.querySelector('#btn-attack'), 'attackL')
-  bind(root.querySelector('#btn-heavy'), 'attackH')
+  jumpEl = root.querySelector('#btn-jump')
+  attackEl = root.querySelector('#btn-attack')
+  heavyEl = root.querySelector('#btn-heavy')
+  bind(jumpEl, 'jump')
+  bind(attackEl, 'attackL')
+  bind(heavyEl, 'attackH')
 }
 
-export function showTouchControls() {
+// labels lets a scene relabel the three action buttons (they still drive the same
+// TouchState flags) — e.g. NIGHT HUNT shows RUN / USE / LURE instead of JUMP/ATK/HVY.
+export function showTouchControls(labels) {
   if (!isTouchDevice()) return
   mount()
+  const L = labels || {}
+  jumpEl.textContent = L.jump || 'JUMP'
+  attackEl.textContent = L.attack || 'ATK'
+  heavyEl.textContent = L.heavy || 'HVY'
   root.classList.add('tc-on')
   rotateEl.classList.add('tc-armed')
 }
