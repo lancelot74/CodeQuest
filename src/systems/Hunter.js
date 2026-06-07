@@ -19,10 +19,12 @@ const SIGHT_RANGE = 250
 const HEAR_RANGE = 260
 const SMELL_RANGE = 160
 const AWARE_UP = 0.85 // per second at full sense signal
-const AWARE_DOWN = 0.45 // decay per second when nothing is sensed
+const AWARE_DOWN = 0.7 // decay per second when nothing is sensed (forgets faster)
 const PATROL_SPEED = 52
 const HUNT_SPEED = 92 // suspicious / search drift
-const CHASE_SPEED = 132
+const CHASE_SPEED = 116 // slower than a sprint (168) so a chase can be broken
+const GIVE_UP = 2.8 // seconds of lost contact before a chase collapses to CALM
+const CALM_TIME = 2.2 // cooldown spent wandering before going back on patrol
 const ATTACK_RANGE = 220
 const ATTACK_CD = 1.7
 const WINDUP = 0.28 // telegraph before a detection attack fires (fairness)
@@ -51,6 +53,8 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.patrol = { x, y }
     this.attackTimer = 0
     this.unstick = 0
+    this.lostTimer = 0
+    this.calmTimer = 0
 
     this.meter = scene.add.graphics().setDepth(9000)
   }
@@ -82,19 +86,27 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     if (sig > 0) {
       this.awareness = Math.min(1, this.awareness + AWARE_UP * sig * dt)
       this.lastCue = { x, y }
+      this.lostTimer = 0
     } else {
       this.awareness = Math.max(0, this.awareness - AWARE_DOWN * dt)
+      this.lostTimer += dt
     }
 
-    const a = this.awareness
-    if (a >= 1) this.mode = 'CHASE'
-    else if (a >= 0.45) this.mode = 'SUSPICIOUS'
-    else if (a > 0.08) this.mode = 'SEARCH'
-    else this.mode = 'PATROL'
+    this.updateMode(sig, dt)
 
+    const p = this.scene.player
     if (this.mode === 'CHASE') {
-      this.moveToward(this.scene.player.x, this.scene.player.y, CHASE_SPEED, dt)
-      this.tryAttack(dt)
+      // only a live signal pinpoints you; once lost, it runs down the last cue
+      const tx = sig > 0 ? p.x : this.lastCue.x
+      const ty = sig > 0 ? p.y : this.lastCue.y
+      this.moveToward(tx, ty, CHASE_SPEED, dt)
+      if (sig > 0) this.tryAttack(dt)
+    } else if (this.mode === 'CALM') {
+      // disengaged: amble to a nearby point until it settles back to patrol
+      if (this.moveToward(this.patrol.x, this.patrol.y, PATROL_SPEED * 0.8, dt)) {
+        this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 200)
+      }
+      this.attackTimer = Math.max(0, this.attackTimer - dt)
     } else if (this.mode === 'SUSPICIOUS') {
       this.moveToward(this.lastCue.x, this.lastCue.y, HUNT_SPEED, dt)
     } else if (this.mode === 'SEARCH') {
@@ -110,6 +122,46 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
 
     this.setDepth(this.y)
     this.drawMeter()
+  }
+
+  // Mode transitions. A CHASE only breaks once contact is lost for GIVE_UP
+  // seconds (or awareness bleeds below a floor), dropping into a CALM cooldown so
+  // the hunter visibly loses interest instead of locking on across the whole map.
+  updateMode(sig, dt) {
+    const a = this.awareness
+    if (this.mode === 'CHASE') {
+      if (sig <= 0 && (this.lostTimer > GIVE_UP || a < 0.35)) {
+        this.mode = 'CALM'
+        this.calmTimer = CALM_TIME
+        this.awareness = Math.min(this.awareness, 0.25)
+        this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 180)
+      }
+      return
+    }
+    if (this.mode === 'CALM') {
+      this.calmTimer -= dt
+      if (a >= 1) this.mode = 'CHASE'
+      else if (this.calmTimer <= 0) this.mode = a >= 0.45 ? 'SUSPICIOUS' : 'PATROL'
+      return
+    }
+    if (a >= 1) this.mode = 'CHASE'
+    else if (a >= 0.45) this.mode = 'SUSPICIOUS'
+    else if (a > 0.08) this.mode = 'SEARCH'
+    else this.mode = 'PATROL'
+  }
+
+  // A thrown lure yanks attention to a point. Breaks a chase lock down into an
+  // investigate so noise can be used to peel the hunter off you.
+  distract(x, y) {
+    this.lastCue = { x, y }
+    this.lostTimer = 0
+    if (this.mode === 'CHASE') {
+      this.awareness = 0.7
+      this.mode = 'SUSPICIOUS'
+    } else {
+      this.awareness = Math.max(this.awareness, 0.6)
+      if (this.mode === 'PATROL' || this.mode === 'CALM') this.mode = 'SUSPICIOUS'
+    }
   }
 
   moveToward(tx, ty, speed, dt) {

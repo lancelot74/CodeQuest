@@ -42,6 +42,10 @@ export default class NightHuntScene extends Phaser.Scene {
     this.scent = []
     this._burst = 0
     this._scentT = 0
+    this._stepT = 0
+    this.faceX = 1
+    this.faceY = 0
+    this.lures = 3
     this.playerMoving = false
     this.playerLoudness = 0
     this.playerMoveFactor = 0
@@ -60,7 +64,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,UP,DOWN,LEFT,RIGHT')
 
     this.startRound()
   }
@@ -120,11 +124,13 @@ export default class NightHuntScene extends Phaser.Scene {
 
   // ---- player ---------------------------------------------------------------
   buildPlayer() {
-    this.playerShadow = this.add.ellipse(this.spawn.x, this.spawn.y, 22, 8, 0x000000, 0.32)
-    this.player = this.physics.add.sprite(this.spawn.x, this.spawn.y, 'hunt-hero').setOrigin(0.5, 0.62).setScale(0.62)
+    this.playerShadow = this.add.ellipse(this.spawn.x, this.spawn.y, 20, 7, 0x000000, 0.32)
+    this.player = this.physics.add.sprite(this.spawn.x, this.spawn.y, 'ninja-idle').setOrigin(0.5, 0.72).setScale(1.05)
+    this.player.play('ninja-idle')
     this.player.body.setAllowGravity(false)
     this.player.setCollideWorldBounds(true)
-    this.player.body.setSize(20, 14)
+    this.player.body.setSize(16, 14)
+    this.player.body.setOffset(8, 15)
     this.physics.add.collider(this.player, this.wallZones)
   }
 
@@ -147,10 +153,61 @@ export default class NightHuntScene extends Phaser.Scene {
     this._burst = Math.max(0, this._burst - dt * 1.2)
     this.playerLoudness = (moving ? (sprint ? 1.0 : 0.4) : 0) + this._burst
 
-    if (moving && Math.abs(ax) > 0.02) this.player.flipX = ax < 0
-    this.player.scaleY = moving ? 0.62 * (1 + 0.05 * Math.sin(time / 70)) : 0.62
+    if (moving) {
+      this.faceX = ax
+      this.faceY = ay
+      if (Math.abs(ax) > 0.02) this.player.flipX = ax < 0
+      if (this.player.anims.getName() !== 'ninja-run') this.player.play('ninja-run')
+    } else if (this.player.anims.getName() !== 'ninja-idle') {
+      this.player.play('ninja-idle')
+    }
+
+    // footsteps: cadence scales with speed; only audible while actually moving
+    if (moving) {
+      this._stepT -= dt
+      if (this._stepT <= 0) {
+        this._stepT = sprint ? 0.26 : 0.42
+        Audio.play(this, SFX.jump, { volume: sprint ? 0.5 : 0.32, rate: sprint ? 1.25 : 1.05 })
+      }
+    } else {
+      this._stepT = 0
+    }
+
     this.player.setDepth(this.player.y)
-    this.playerShadow.setPosition(this.player.x, this.player.y + this.player.displayHeight * 0.3).setDepth(this.player.y - 1)
+    this.playerShadow.setPosition(this.player.x, this.player.y + this.player.displayHeight * 0.22).setDepth(this.player.y - 1)
+  }
+
+  // Throw a pebble in the facing direction. It lands, makes a loud noise and yanks
+  // the hunter's attention to the spot — the core tool for peeling a chase off you.
+  throwLure() {
+    if (this.lures <= 0) return
+    this.lures--
+    Audio.play(this, SFX.click)
+    let fx = this.faceX
+    let fy = this.faceY
+    if (fx === 0 && fy === 0) fx = this.player.flipX ? -1 : 1
+    const l = Math.hypot(fx, fy) || 1
+    const dist = 170
+    const tx = Phaser.Math.Clamp(this.player.x + (fx / l) * dist, 40, WORLD_W - 40)
+    const ty = Phaser.Math.Clamp(this.player.y + (fy / l) * dist, 40, WORLD_H - 40)
+
+    const rock = this.add.image(this.player.x, this.player.y - 14, 'hunt-mid_stone').setDepth(960).setScale(1.1)
+    this.tweens.add({
+      targets: rock,
+      x: tx,
+      y: ty,
+      angle: 240,
+      duration: 420,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        rock.destroy()
+        Audio.play(this, SFX.hit, { volume: 0.5 })
+        CombatSystem.puff(this, tx, ty, 0xb6c2d8)
+        this.scent.push({ x: tx, y: ty, str: 1.1 })
+        if (this.hunter) this.hunter.distract(tx, ty)
+      },
+    })
+    this.updateLureHud()
   }
 
   updateScent(dt) {
@@ -214,6 +271,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.player.setPosition(this.spawn.x, this.spawn.y)
     this.player.body.setVelocity(0, 0)
     this.scent.length = 0
+    this.lures = 3
+    this.updateLureHud()
 
     this.placeObjectives()
     this.placeExit()
@@ -489,6 +548,46 @@ export default class NightHuntScene extends Phaser.Scene {
     const menu = panelButton(this, GAME_WIDTH - 40, GAME_HEIGHT - 16, 'MENU', () => this.scene.start('MainMenu'), { size: 8, width: 60, depth: 9500 })
     menu.bg.setScrollFactor(0)
     menu.text.setScrollFactor(0)
+
+    // lure ammo + a persistent controls hint so the inputs are discoverable
+    this.lureText = pixelText(this, 12, 30, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E interact  Q lure', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+
+    // world-space prompt that hovers over the nearest interactable
+    this.prompt = pixelText(this, 0, 0, '', 8, '#ffe066').setOrigin(0.5, 1).setDepth(9400).setVisible(false)
+  }
+
+  updateLureHud() {
+    if (this.lureText) this.lureText.setText('LURES ' + this.lures + '/3   [Q]')
+  }
+
+  // Float a "HOLD E" / "ENTER" hint over the closest objective or the open exit.
+  updatePrompt() {
+    let target = null
+    let label = ''
+    let best = 60
+    for (const o of this.objectives) {
+      if (o.done) continue
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, o.x, o.y)
+      if (d < best) {
+        best = d
+        target = o
+        label = 'HOLD E'
+      }
+    }
+    if (this.exitOpen && this.exit) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.exit.x, this.exit.y)
+      if (d < best) {
+        best = d
+        target = this.exit
+        label = 'ENTER'
+      }
+    }
+    if (target) {
+      this.prompt.setText(label).setPosition(target.x, target.y - 28).setVisible(true).setDepth(target.y + 1)
+    } else {
+      this.prompt.setVisible(false)
+    }
   }
 
   updateHudSense() {
@@ -567,11 +666,13 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     const dt = delta / 1000
     this.handlePlayer(dt, time)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.Q)) this.throwLure()
     this.updateScent(dt)
     if (this.hunter) this.hunter.think(dt)
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()
+    this.updatePrompt()
     this.checkCatch()
     this.updateFog()
   }
