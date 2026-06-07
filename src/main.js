@@ -11,6 +11,7 @@ import HUDScene from './scenes/HUD.js'
 import GameOverScene from './scenes/GameOver.js'
 import CodexScene from './scenes/Codex.js'
 import AgeOfWarScene from './scenes/AgeOfWar.js'
+import NightHuntScene from './scenes/NightHunt.js'
 
 new Phaser.Game(
   createConfig([
@@ -25,5 +26,6 @@ new Phaser.Game(
     GameOverScene,
     CodexScene,
     AgeOfWarScene,
+    NightHuntScene,
   ]),
 )

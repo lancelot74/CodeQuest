@@ -41,6 +41,20 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('mage-walk', 'assets/game/enemies/mage/walk.png', MAGE)
     this.load.spritesheet('mage-death', 'assets/game/enemies/mage/death.png', MAGE)
 
+    // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
+    // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
+    const HUNT = 'assets/game/hunt'
+    this.load.spritesheet('hunt-tiles', `${HUNT}/spritesheet/tileset_florest.png`, {
+      frameWidth: 24,
+      frameHeight: 24,
+    })
+    this.load.image('hunt-hero', `${HUNT}/characters/hero.png`)
+    this.load.image('hunt-golem', `${HUNT}/characters/golem.png`)
+    this.load.image('hunt-coin', `${HUNT}/spritesheet/ui_coin.png`)
+    for (const p of ['tree', 'big_stone', 'mid_stone', 'chest_closed', 'skull', 'sign']) {
+      this.load.image(`hunt-${p}`, `${HUNT}/spritesheet/props_${p}.png`)
+    }
+
     // Kenney pixel-adventure UI sheet (32px tiles, no spacing) for panels/buttons.
     this.load.spritesheet('ui', 'assets/game/ui/kenney-ui.png', { frameWidth: 32, frameHeight: 32 })
     // Kenney UI Pack (Pixel Adventure): blue-grey 9-slice panel for menu/HUD chrome.

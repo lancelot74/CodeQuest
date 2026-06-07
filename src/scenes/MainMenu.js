@@ -38,5 +38,10 @@ export default class MainMenuScene extends Phaser.Scene {
     panelButton(this, GAME_WIDTH / 2, y, 'AGE OF WAR', () => this.scene.start('AgeOfWar'), {
       width: W,
     })
+
+    y += 36
+    panelButton(this, GAME_WIDTH / 2, y, 'NIGHT HUNT', () => this.scene.start('NightHunt'), {
+      width: W,
+    })
   }
 }
