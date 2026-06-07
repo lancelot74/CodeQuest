@@ -9,10 +9,12 @@ export const GAME_HEIGHT = 360
 // screens don't make the HUD absurdly wide or narrow.
 function computeWidth() {
   if (typeof window === 'undefined') return 768
-  const w = window.innerWidth || 768
-  const h = window.innerHeight || GAME_HEIGHT
+  // physical screen dims are stable across orientation + immune to address-bar resizing,
+  // unlike innerWidth/innerHeight at load; max/min gives the landscape aspect either way
+  const w = window.screen?.width || window.innerWidth || 768
+  const h = window.screen?.height || window.innerHeight || GAME_HEIGHT
   const aspect = Math.max(w, h) / Math.min(w, h)
-  return Phaser.Math.Clamp(Math.round(GAME_HEIGHT * aspect), 640, 960)
+  return Phaser.Math.Clamp(Math.round(GAME_HEIGHT * aspect), 640, 1024)
 }
 
 export const GAME_WIDTH = computeWidth()

@@ -25,7 +25,16 @@
         user-select: none;
         -webkit-tap-highlight-color: transparent;
       }
-      #game { width: 100vw; height: 100vh; height: 100dvh; }
+      /* Pin the game inside the device safe area so a notch or rounded corners can't
+         clip the canvas edges (viewport-fit=cover makes the insets readable; on a
+         laptop / non-notched screen they're 0, so it's just a full-window box). */
+      #game {
+        position: fixed;
+        top: env(safe-area-inset-top, 0px);
+        left: env(safe-area-inset-left, 0px);
+        right: env(safe-area-inset-right, 0px);
+        bottom: env(safe-area-inset-bottom, 0px);
+      }
       #game canvas { display: block; image-rendering: pixelated; }
     </style>
   </head>
