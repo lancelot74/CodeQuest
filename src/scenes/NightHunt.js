@@ -118,7 +118,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,H,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,UP,DOWN,LEFT,RIGHT')
 
     showTouchControls(TOUCH_LABELS)
     this.events.once('shutdown', () => hideTouchControls())
@@ -311,6 +311,16 @@ export default class NightHuntScene extends Phaser.Scene {
     return false
   }
 
+  // A SIGHT hunter can only spot you when you're actually lit: carrying a torch or
+  // standing inside a map torch's glow. In true darkness you're invisible to sight.
+  playerLit() {
+    if (this.hasTorch) return true
+    for (const tr of this.torches) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, tr.x, tr.y) < TORCH_LIGHT) return true
+    }
+    return false
+  }
+
   // Throw the carried stone in the facing direction. It lands, makes a loud noise
   // and yanks every hunter's attention to the spot — your tool for peeling a chase.
   throwLure() {
@@ -342,16 +352,6 @@ export default class NightHuntScene extends Phaser.Scene {
       },
     })
     this.updateInventoryHud()
-  }
-
-  // Swap to the next hero in the roster. Stored in the registry (session-scoped, so
-  // it doesn't touch the platformer's saved character) and applied via a clean restart.
-  cycleHero() {
-    const i = HEROES.findIndex((h) => h.key === this.heroKey)
-    const next = HEROES[(i + 1) % HEROES.length]
-    this.registry.set('huntHero', next.key)
-    Audio.play(this, SFX.click)
-    this.scene.restart({ round: this.round })
   }
 
   updateScent(dt) {
@@ -821,8 +821,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.warmthBar = this.add.graphics().setScrollFactor(0).setDepth(9500)
     this.invText = pixelText(this, 12, 32, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     this.torchText = pixelText(this, 12, 46, '', 8, '#ffb24a').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
-    pixelText(this, 12, 60, 'HERO ' + this.hero.label + '  [H]', 8, '#9fb0d6').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
-    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use/drop  Q throw  H hero', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, 60, 'HERO ' + this.hero.label, 8, '#9fb0d6').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use/drop  Q throw', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
 
     // world-space prompt that hovers over the nearest interactable
     this.prompt = pixelText(this, 0, 0, '', 8, '#ffe066').setOrigin(0.5, 1).setDepth(9400).setVisible(false)
@@ -981,10 +981,6 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     const dt = delta / 1000
     this.handlePlayer(dt, time)
-    if (Phaser.Input.Keyboard.JustDown(this.keys.H)) {
-      this.cycleHero()
-      return
-    }
     const lureBtn = TouchState.attackH
     if (Phaser.Input.Keyboard.JustDown(this.keys.Q) || (lureBtn && !this._prevLureBtn)) this.throwLure()
     this._prevLureBtn = lureBtn

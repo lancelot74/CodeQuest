@@ -57,7 +57,9 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.lostTimer = 0
     this.calmTimer = 0
 
-    this.meter = scene.add.graphics().setDepth(9000)
+    // sits in the world depth band (below the fog) so darkness hides it like the
+    // hunter sprite — you only see the awareness ring when the hunter is actually lit
+    this.meter = scene.add.graphics()
   }
 
   // Per-sense signal in 0..1 plus the cue position the hunter should investigate.
@@ -66,7 +68,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     const p = s.player
     const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y)
     if (this.senseKey === 'sight') {
-      if (d > SIGHT_RANGE || !s.losClear(this.x, this.y, p.x, p.y)) return { sig: 0 }
+      if (d > SIGHT_RANGE || !s.playerLit() || !s.losClear(this.x, this.y, p.x, p.y)) return { sig: 0 }
       const near = 1 - d / SIGHT_RANGE
       return { sig: near * (s.playerMoving ? 1 : 0.45), x: p.x, y: p.y }
     }
@@ -218,6 +220,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
   drawMeter() {
     const g = this.meter
     g.clear()
+    g.setDepth(this.y + 1)
     if (this.awareness <= 0.04) return
     const cx = this.x
     const cy = this.y - this.displayHeight * 0.62 - 8
