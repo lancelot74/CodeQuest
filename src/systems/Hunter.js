@@ -27,6 +27,7 @@ const GIVE_UP = 2.8 // seconds of lost contact before a chase collapses to CALM
 const CALM_TIME = 2.2 // cooldown spent wandering before going back on patrol
 const RAGE_TIME = 6 // a CHASE (enraged) burns itself out after this long, even if it still sees you
 const RAGE_COOLDOWN = 4 // ...then it's winded and can't re-enrage for this long (your escape window)
+const STUN_TIME = 3 // on burnout it stands dead-still, meter emptied, for this long before recovering
 const ATTACK_RANGE = 220
 const ATTACK_CD = 1.7
 const WINDUP = 0.28 // telegraph before a detection attack fires (fairness)
@@ -60,6 +61,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.calmTimer = 0
     this.chaseTimer = 0
     this.rageCooldown = 0
+    this.stunTimer = 0
 
     // sits in the world depth band (below the fog) so darkness hides it like the
     // hunter sprite — you only see the awareness ring when the hunter is actually lit
@@ -121,6 +123,8 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       const ty = sig > 0 ? p.y : this.lastCue.y
       this.moveToward(tx, ty, CHASE_SPEED, dt)
       if (sig > 0) this.tryAttack(dt)
+    } else if (this.mode === 'STUNNED') {
+      this.body.setVelocity(0, 0) // winded after a rage: frozen in place
     } else if (this.mode === 'CALM') {
       // disengaged: amble to a nearby point until it settles back to patrol
       if (this.moveToward(this.patrol.x, this.patrol.y, PATROL_SPEED * 0.8, dt)) {
@@ -151,16 +155,31 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
   updateMode(sig, dt) {
     const a = this.awareness
     if (this.rageCooldown > 0) this.rageCooldown -= dt
+    // winded after a burnout: frozen in place with an empty meter until STUN_TIME elapses
+    if (this.mode === 'STUNNED') {
+      this.awareness = 0
+      this.stunTimer -= dt
+      if (this.stunTimer <= 0) {
+        this.mode = 'PATROL'
+        this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 200)
+      }
+      return
+    }
     if (this.mode === 'CHASE') {
       this.chaseTimer -= dt
       const lostContact = sig <= 0 && (this.lostTimer > GIVE_UP || a < 0.35)
-      const burnedOut = this.chaseTimer <= 0
-      if (lostContact || burnedOut) {
+      if (this.chaseTimer <= 0) {
+        // rage ran its course: stop dead, drop the meter to zero, then recover
+        this.mode = 'STUNNED'
+        this.stunTimer = STUN_TIME
+        this.awareness = 0
+        this.rageCooldown = RAGE_COOLDOWN
+        this.body.setVelocity(0, 0)
+      } else if (lostContact) {
         this.mode = 'CALM'
         this.calmTimer = CALM_TIME
         this.awareness = Math.min(this.awareness, 0.25)
         this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 180)
-        if (burnedOut) this.rageCooldown = RAGE_COOLDOWN
       }
       return
     }

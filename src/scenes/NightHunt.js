@@ -811,6 +811,8 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     this.senseIcon = this.add.graphics().setScrollFactor(0).setDepth(9501)
     this.senseText = pixelText(this, GAME_WIDTH - 12, 32, '', 7, '#cdd7ee').setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
+    // enraged-chase countdown — only shown while a hunter is actively chasing
+    this.rageText = pixelText(this, GAME_WIDTH / 2, 40, '', 11, '#ff3b3b').setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(9502).setVisible(false)
 
     const menu = panelButton(this, GAME_WIDTH - 40, GAME_HEIGHT - 16, 'MENU', () => this.scene.start('MainMenu'), { size: 8, width: 60, depth: 9500 })
     menu.bg.setScrollFactor(0)
@@ -842,6 +844,14 @@ export default class NightHuntScene extends Phaser.Scene {
   updateTorchHud() {
     if (!this.torchText) return
     this.torchText.setText(this.hasTorch ? 'TORCH lit — hunters can see you' : '')
+  }
+
+  // Show a countdown while any hunter is enraged so you know how long the chase lasts.
+  updateRageHud() {
+    let t = 0
+    for (const h of this.hunters) if (h.mode === 'CHASE') t = Math.max(t, h.chaseTimer)
+    if (t > 0) this.rageText.setText('ENRAGED  ' + t.toFixed(1) + 's').setVisible(true)
+    else this.rageText.setVisible(false)
   }
 
   drawStamina() {
@@ -994,6 +1004,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.drawStamina()
     this.drawWarmth()
     for (const h of this.hunters) h.think(dt)
+    this.updateRageHud()
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()
