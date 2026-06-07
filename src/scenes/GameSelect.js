@@ -60,9 +60,9 @@ export default class GameSelectScene extends Phaser.Scene {
     pixelText(this, GAME_WIDTH / 2, 180, 'Knight & Golem are Night Hunt only', 7, '#6f7db0')
 
     const W = 184
-    panelButton(this, GAME_WIDTH / 2, 214, 'STORY MODE', () => this.scene.start('WorldSelect'), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 252, 'AGE OF WAR', () => this.scene.start('AgeOfWar'), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 290, 'NIGHT HUNT', () => this.scene.start('NightHunt'), { width: W })
+    panelButton(this, GAME_WIDTH / 2, 214, 'STORY MODE', () => this.scene.start('ModePage', { mode: 'story' }), { width: W })
+    panelButton(this, GAME_WIDTH / 2, 252, 'AGE OF WAR', () => this.scene.start('ModePage', { mode: 'war' }), { width: W })
+    panelButton(this, GAME_WIDTH / 2, 290, 'NIGHT HUNT', () => this.scene.start('ModePage', { mode: 'hunt' }), { width: W })
 
     button(this, 52, GAME_HEIGHT - 22, '< BACK', () => this.scene.start('MainMenu'), { size: 8 })
   }

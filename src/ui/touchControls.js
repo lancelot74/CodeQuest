@@ -205,6 +205,8 @@ export function showTouchControls(labels) {
   const L = labels || {}
   jumpEl.textContent = L.jump || 'JUMP'
   attackEl.textContent = L.attack || 'ATK'
+  // a scene can pass heavy: null to hide the third button entirely
+  heavyEl.style.display = L.heavy === null ? 'none' : ''
   heavyEl.textContent = L.heavy || 'HVY'
   root.classList.add('tc-on')
   rotateEl.classList.add('tc-armed')

@@ -60,7 +60,7 @@ const HEROES = [
   { key: 'hunt-hero', label: 'KNIGHT', kind: 'static', scale: 0.62, origin: 0.62, body: [20, 14] },
   { key: 'hunt-golem', label: 'GOLEM', kind: 'static', scale: 0.95, origin: 0.62, body: [16, 12] },
 ]
-const TOUCH_LABELS = { jump: 'RUN', attack: 'USE', heavy: 'LURE' }
+const TOUCH_LABELS = { jump: 'RUN', attack: 'USE', heavy: null }
 
 // NIGHT HUNT — a top-down survival-horror roguelite (Cobb Can Move-style). Roam a
 // dark forest doing 3 objectives and reach the exit while ONE stalker hunts you;
@@ -76,7 +76,6 @@ export default class NightHuntScene extends Phaser.Scene {
     const wanted = this.registry.get('huntHero') || SaveSystem.data.character
     this.heroKey = HEROES.some((h) => h.key === wanted) ? wanted : 'ninja'
     this.hero = HEROES.find((h) => h.key === this.heroKey)
-    this._prevLureBtn = false
     this._prevUseBtn = false
     this.interacting = false
     this.gameOver = false
@@ -118,7 +117,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,Q,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,UP,DOWN,LEFT,RIGHT')
 
     showTouchControls(TOUCH_LABELS)
     this.events.once('shutdown', () => hideTouchControls())
@@ -824,7 +823,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.invText = pixelText(this, 12, 32, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     this.torchText = pixelText(this, 12, 46, '', 8, '#ffb24a').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     pixelText(this, 12, 60, 'HERO ' + this.hero.label, 8, '#9fb0d6').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
-    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use/drop  Q throw', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use/throw/drop', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
 
     // world-space prompt that hovers over the nearest interactable
     this.prompt = pixelText(this, 0, 0, '', 8, '#ffe066').setOrigin(0.5, 1).setDepth(9400).setVisible(false)
@@ -834,7 +833,7 @@ export default class NightHuntScene extends Phaser.Scene {
     if (!this.invText) return
     const label =
       this.carried === 'stone'
-        ? 'ITEM  stone  [Q throw]'
+        ? 'ITEM  stone  [E throw]'
         : this.carried === 'torch'
           ? 'ITEM  torch  [E drop]'
           : 'ITEM  —  (empty)'
@@ -991,12 +990,13 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     const dt = delta / 1000
     this.handlePlayer(dt, time)
-    const lureBtn = TouchState.attackH
-    if (Phaser.Input.Keyboard.JustDown(this.keys.Q) || (lureBtn && !this._prevLureBtn)) this.throwLure()
-    this._prevLureBtn = lureBtn
-    // tap USE/E away from an objective to set down a carried torch
+    // E (USE) is the single slot action: throw a carried stone or set down a carried
+    // torch — but only away from an objective, where holding E channels it instead
     const useBtn = this.keys.E.isDown || TouchState.attackL
-    if (useBtn && !this._prevUseBtn && this.carried === 'torch' && !this.nearUnfinishedObjective()) this.dropTorch()
+    if (useBtn && !this._prevUseBtn && !this.nearUnfinishedObjective()) {
+      if (this.carried === 'stone') this.throwLure()
+      else if (this.carried === 'torch') this.dropTorch()
+    }
     this._prevUseBtn = useBtn
     this.updateScent(dt)
     if (this._noPickT > 0) this._noPickT -= dt
