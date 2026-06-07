@@ -1,6 +1,8 @@
 import Phaser from 'phaser'
 
-export const GAME_WIDTH = 640
+// Wider-than-16:9 base canvas (~2.13:1) so the game fills modern widescreen phones
+// and laptop windows with far less letterboxing, and shows more of the world across.
+export const GAME_WIDTH = 768
 export const GAME_HEIGHT = 360
 
 export function createConfig(scenes) {
