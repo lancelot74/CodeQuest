@@ -25,6 +25,8 @@ const HUNT_SPEED = 92 // suspicious / search drift
 const CHASE_SPEED = 116 // slower than a sprint (168) so a chase can be broken
 const GIVE_UP = 2.8 // seconds of lost contact before a chase collapses to CALM
 const CALM_TIME = 2.2 // cooldown spent wandering before going back on patrol
+const RAGE_TIME = 6 // a CHASE (enraged) burns itself out after this long, even if it still sees you
+const RAGE_COOLDOWN = 4 // ...then it's winded and can't re-enrage for this long (your escape window)
 const ATTACK_RANGE = 220
 const ATTACK_CD = 1.7
 const WINDUP = 0.28 // telegraph before a detection attack fires (fairness)
@@ -56,6 +58,8 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.unstick = 0
     this.lostTimer = 0
     this.calmTimer = 0
+    this.chaseTimer = 0
+    this.rageCooldown = 0
 
     // sits in the world depth band (below the fog) so darkness hides it like the
     // hunter sprite — you only see the awareness ring when the hunter is actually lit
@@ -140,30 +144,41 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.drawMeter()
   }
 
-  // Mode transitions. A CHASE only breaks once contact is lost for GIVE_UP
-  // seconds (or awareness bleeds below a floor), dropping into a CALM cooldown so
-  // the hunter visibly loses interest instead of locking on across the whole map.
+  // Mode transitions. A CHASE breaks once contact is lost for GIVE_UP seconds (or
+  // awareness bleeds below a floor) OR once the rage burns out after RAGE_TIME even
+  // with you in plain sight — either way dropping into a CALM cooldown so the hunter
+  // visibly loses interest instead of locking on across the whole map forever.
   updateMode(sig, dt) {
     const a = this.awareness
+    if (this.rageCooldown > 0) this.rageCooldown -= dt
     if (this.mode === 'CHASE') {
-      if (sig <= 0 && (this.lostTimer > GIVE_UP || a < 0.35)) {
+      this.chaseTimer -= dt
+      const lostContact = sig <= 0 && (this.lostTimer > GIVE_UP || a < 0.35)
+      const burnedOut = this.chaseTimer <= 0
+      if (lostContact || burnedOut) {
         this.mode = 'CALM'
         this.calmTimer = CALM_TIME
         this.awareness = Math.min(this.awareness, 0.25)
         this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 180)
+        if (burnedOut) this.rageCooldown = RAGE_COOLDOWN
       }
       return
     }
     if (this.mode === 'CALM') {
       this.calmTimer -= dt
-      if (a >= 1) this.mode = 'CHASE'
+      if (a >= 1 && this.rageCooldown <= 0) this.enrage()
       else if (this.calmTimer <= 0) this.mode = a >= 0.45 ? 'SUSPICIOUS' : 'PATROL'
       return
     }
-    if (a >= 1) this.mode = 'CHASE'
+    if (a >= 1 && this.rageCooldown <= 0) this.enrage()
     else if (a >= 0.45) this.mode = 'SUSPICIOUS'
     else if (a > 0.08) this.mode = 'SEARCH'
     else this.mode = 'PATROL'
+  }
+
+  enrage() {
+    this.mode = 'CHASE'
+    this.chaseTimer = RAGE_TIME
   }
 
   // A thrown lure yanks attention to a point. Breaks a chase lock down into an
