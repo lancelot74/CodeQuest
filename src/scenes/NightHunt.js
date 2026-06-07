@@ -35,7 +35,7 @@ const HOMING_SPEED = 150 // ooze spit — deliberately slow so it can be outrun
 
 // hunger: drains slowly every round; emptied it slows the hero. Food refills it.
 const HUNGER_MAX = 1
-const HUNGER_DRAIN = 0.02 // ~50s from full to starving
+const HUNGER_DRAIN = 0.045 // ~22s from full to starving
 const FOOD_REFILL = 0.45
 const STARVE_SLOW = 0.7 // movement multiplier while starving
 
