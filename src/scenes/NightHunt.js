@@ -17,7 +17,7 @@ const WORLD_H = WORLD_ROWS * TILE // 816
 const WALK_SPEED = 96
 const SPRINT_SPEED = 168
 const LIGHT_RADIUS = 104 // player light WITH a torch
-const SMALL_LIGHT = 48 // player light without a torch (immediate surroundings only)
+const SMALL_LIGHT = 30 // player light without a torch (immediate surroundings only)
 const TORCH_LIGHT = 80 // ambient pool cast by a map torch
 const OBJ_RADIUS = 34
 const OBJ_HOLD = 1.5 // seconds to channel an objective
@@ -36,6 +36,16 @@ const STAM_MAX = 1
 const STAM_DRAIN = 0.55
 const STAM_REGEN = 0.4
 const STAM_FLOOR = 0.25
+
+// exposure / freeze (round 2+): standing in darkness with no torch drains warmth;
+// at zero the hero freezes in place for a beat — easy prey. Torchlight (carried, or
+// a map torch's glow) warms you; carrying a torch makes you immune.
+const WARM_MAX = 1
+const COLD_DRAIN = 0.22
+const WARM_REGEN = 0.5
+const FREEZE_TIME = 1.6
+const FREEZE_THAW = 0.5 // warmth restored after a freeze ends
+const WARM_RANGE = TORCH_LIGHT * 0.85 // how close a map torch must be to warm you
 
 const GRASS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 16, 18, 21, 33]
 
@@ -67,6 +77,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.heroKey = HEROES.some((h) => h.key === wanted) ? wanted : 'ninja'
     this.hero = HEROES.find((h) => h.key === this.heroKey)
     this._prevLureBtn = false
+    this._prevUseBtn = false
     this.interacting = false
     this.gameOver = false
     this.spawn = { x: WORLD_W / 2, y: WORLD_H / 2 }
@@ -78,17 +89,22 @@ export default class NightHuntScene extends Phaser.Scene {
     this._stepT = 0
     this.faceX = 1
     this.faceY = 0
-    this.lures = 0
+    this.carried = null // single inventory slot: 'stone' | 'torch' | null
     this.stamina = STAM_MAX
     this.exhausted = false
     this.hasTorch = false
+    this.warmth = WARM_MAX
+    this.frozen = false
+    this.freezeTimer = 0
+    this._alarmT = 0
+    this._noPickT = 0
     this.torches = []
     this.stones = []
     this.playerMoving = false
     this.playerLoudness = 0
     this.playerMoveFactor = 0
     this.exit = null
-    this.hunter = null
+    this.hunters = []
     this.bannerEls = []
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
@@ -183,9 +199,29 @@ export default class NightHuntScene extends Phaser.Scene {
   handlePlayer(dt, time) {
     const k = this.keys
     const t = TouchState
+    this.interacting = k.E.isDown || t.attackL
+
+    // exposure/freeze (round 2+): refill near torchlight, drain in the dark
+    this.updateWarmth(dt)
+    if (this.frozen) {
+      this.freezeTimer -= dt
+      this.player.body.setVelocity(0, 0)
+      this.player.x += Math.sin(time / 20) * 0.6 // shiver
+      this.playerMoving = false
+      this.playerMoveFactor = 0
+      this.playerLoudness = 0
+      if (this.freezeTimer <= 0) {
+        this.frozen = false
+        this.warmth = FREEZE_THAW
+        this.player.clearTint()
+      }
+      this.player.setDepth(this.player.y)
+      this.playerShadow.setPosition(this.player.x, this.player.y + this.player.displayHeight * 0.22).setDepth(this.player.y - 1)
+      return
+    }
+
     let ax = (k.D.isDown || k.RIGHT.isDown || t.right ? 1 : 0) - (k.A.isDown || k.LEFT.isDown || t.left ? 1 : 0)
     let ay = (k.S.isDown || k.DOWN.isDown || t.down ? 1 : 0) - (k.W.isDown || k.UP.isDown || t.up ? 1 : 0)
-    this.interacting = k.E.isDown || t.attackL
     const moving = ax !== 0 || ay !== 0
 
     // stamina-gated dash: drains while sprinting, recovers otherwise; once emptied
@@ -247,11 +283,39 @@ export default class NightHuntScene extends Phaser.Scene {
     }
   }
 
-  // Throw a pebble in the facing direction. It lands, makes a loud noise and yanks
-  // the hunter's attention to the spot — the core tool for peeling a chase off you.
+  // Exposure: only matters from round 2. Carrying a torch keeps you fully warm;
+  // otherwise standing in a map torch's glow warms you and darkness chills you. Hit
+  // zero and the hero freezes in place for a beat — defenceless against the hunter.
+  updateWarmth(dt) {
+    if (this.round < 2 || this.frozen) return
+    if (this.hasTorch || this.nearTorchLight()) {
+      this.warmth = Math.min(WARM_MAX, this.warmth + WARM_REGEN * dt)
+      this.player.clearTint()
+    } else {
+      this.warmth = Math.max(0, this.warmth - COLD_DRAIN * dt)
+      if (this.warmth < 0.45) this.player.setTint(0x9ad0ff)
+      if (this.warmth <= 0) {
+        this.frozen = true
+        this.freezeTimer = FREEZE_TIME
+        this.player.setTint(0x6fb6ff)
+        Audio.play(this, SFX.crit, { volume: 0.5 })
+        this.flashBanner('FROZEN!', '#9ad0ff')
+      }
+    }
+  }
+
+  nearTorchLight() {
+    for (const tr of this.torches) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, tr.x, tr.y) < WARM_RANGE) return true
+    }
+    return false
+  }
+
+  // Throw the carried stone in the facing direction. It lands, makes a loud noise
+  // and yanks every hunter's attention to the spot — your tool for peeling a chase.
   throwLure() {
-    if (this.lures <= 0) return
-    this.lures--
+    if (this.frozen || this.carried !== 'stone') return
+    this.carried = null
     Audio.play(this, SFX.click)
     let fx = this.faceX
     let fy = this.faceY
@@ -274,10 +338,10 @@ export default class NightHuntScene extends Phaser.Scene {
         Audio.play(this, SFX.hit, { volume: 0.5 })
         CombatSystem.puff(this, tx, ty, 0xb6c2d8)
         this.scent.push({ x: tx, y: ty, str: 1.1 })
-        if (this.hunter) this.hunter.distract(tx, ty)
+        this.hunters.forEach((h) => h.distract(tx, ty))
       },
     })
-    this.updateLureHud()
+    this.updateInventoryHud()
   }
 
   // Swap to the next hero in the roster. Stored in the registry (session-scoped, so
@@ -345,23 +409,29 @@ export default class NightHuntScene extends Phaser.Scene {
     this.clearProjectiles()
     this.clearRoundEntities()
 
-    this.activeSense = Phaser.Utils.Array.GetRandom(Object.keys(SENSES))
-    this.activeSkin = Phaser.Utils.Array.GetRandom(Object.keys(SKINS))
+    // escalation: round R fields min(R,3) hunters, each a distinct sense + skin
+    const n = Phaser.Math.Clamp(this.round, 1, 3)
+    this.activeSenses = Phaser.Utils.Array.Shuffle(Object.keys(SENSES)).slice(0, n)
+    this.activeSkins = Phaser.Utils.Array.Shuffle(Object.keys(SKINS)).slice(0, n)
 
     this.player.setPosition(this.spawn.x, this.spawn.y)
     this.player.body.setVelocity(0, 0)
+    this.player.clearTint()
     this.scent.length = 0
-    this.lures = 0
+    this.carried = null
     this.stamina = STAM_MAX
     this.exhausted = false
+    this.warmth = WARM_MAX
+    this.frozen = false
+    this.freezeTimer = 0
     this.setTorch(false)
-    this.updateLureHud()
+    this.updateInventoryHud()
 
     this.placeObjectives()
     this.placeExit()
     this.placeStones()
     this.placeTorches()
-    this.spawnHunter()
+    this.spawnHunters()
 
     this.roundText.setText('ROUND ' + this.round)
     this.pips.forEach((p) => p.setTint(0x47506a))
@@ -387,14 +457,12 @@ export default class NightHuntScene extends Phaser.Scene {
       this.exit.destroy()
       this.exit = null
     }
-    if (this.hunterCollider) {
-      this.physics.world.removeCollider(this.hunterCollider)
-      this.hunterCollider = null
+    if (this.hunterColliders) {
+      for (const c of this.hunterColliders) this.physics.world.removeCollider(c)
+      this.hunterColliders = []
     }
-    if (this.hunter) {
-      this.hunter.destroy()
-      this.hunter = null
-    }
+    for (const h of this.hunters) h.destroy()
+    this.hunters = []
   }
 
   spreadPoints(n, minFromSpawn, minSep) {
@@ -426,11 +494,18 @@ export default class NightHuntScene extends Phaser.Scene {
     this.exitOpen = false
   }
 
-  spawnHunter() {
-    const pool = Phaser.Utils.Array.Shuffle([...this.openPoints])
-    const pt = pool.find((p) => Phaser.Math.Distance.Between(p.x, p.y, this.spawn.x, this.spawn.y) > 340) || pool[0]
-    this.hunter = new Hunter(this, pt.x, pt.y, this.activeSkin, this.activeSense)
-    this.hunterCollider = this.physics.add.collider(this.hunter, this.wallZones)
+  spawnHunters() {
+    const pool = Phaser.Utils.Array.Shuffle([...this.openPoints]).filter(
+      (p) => Phaser.Math.Distance.Between(p.x, p.y, this.spawn.x, this.spawn.y) > 300
+    )
+    this.hunters = []
+    this.hunterColliders = []
+    for (let i = 0; i < this.activeSenses.length; i++) {
+      const pt = pool[i] || pool[0] || { x: this.spawn.x + 220, y: this.spawn.y }
+      const h = new Hunter(this, pt.x, pt.y, this.activeSkins[i % this.activeSkins.length], this.activeSenses[i])
+      this.hunters.push(h)
+      this.hunterColliders.push(this.physics.add.collider(h, this.wallZones))
+    }
   }
 
   // lure stones: walk over one to pocket it (your only source of throwables)
@@ -443,43 +518,62 @@ export default class NightHuntScene extends Phaser.Scene {
   // map torches: ambient light pools you navigate by; grab one to carry (wide light,
   // but it makes you visible to a nearby hunter)
   placeTorches() {
-    for (const pt of this.spreadPoints(NUM_TORCHES, 150, 170)) {
-      const glow = this.add.ellipse(pt.x, pt.y - 10, 14, 10, 0xffb24a, 0.85).setDepth(pt.y)
-      const flame = this.add.ellipse(pt.x, pt.y - 16, 7, 13, 0xffd86b, 1).setDepth(pt.y + 1)
-      this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.78, yoyo: true, repeat: -1, duration: 300, ease: 'Sine.easeInOut' })
-      this.torches.push({ x: pt.x, y: pt.y - 12, flame, glow })
-    }
+    for (const pt of this.spreadPoints(NUM_TORCHES, 150, 170)) this.spawnTorch(pt.x, pt.y)
   }
 
+  spawnTorch(x, y) {
+    const glow = this.add.ellipse(x, y - 10, 14, 10, 0xffb24a, 0.85).setDepth(y)
+    const flame = this.add.ellipse(x, y - 16, 7, 13, 0xffd86b, 1).setDepth(y + 1)
+    this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.78, yoyo: true, repeat: -1, duration: 300, ease: 'Sine.easeInOut' })
+    this.torches.push({ x, y: y - 12, flame, glow })
+  }
+
+  // Single inventory slot: a stone OR a torch OR nothing. Walk over a pickup with an
+  // empty slot to take it; a full slot ignores everything until you throw/drop.
   handlePickups() {
+    if (this.frozen || this.carried !== null || this._noPickT > 0) return
     for (const s of [...this.stones]) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, s.x, s.y) < PICKUP_DIST) {
         this.stones.splice(this.stones.indexOf(s), 1)
         CombatSystem.puff(this, s.x, s.y - 4, 0xb6c2d8)
         s.destroy()
-        this.lures++
+        this.carried = 'stone'
         Audio.play(this, SFX.click)
-        this.updateLureHud()
+        this.updateInventoryHud()
+        return
       }
     }
-    if (this.hasTorch) return
-    for (const tr of this.torches) {
+    for (const tr of [...this.torches]) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, tr.x, tr.y) < PICKUP_DIST) {
         this.torches.splice(this.torches.indexOf(tr), 1)
         tr.flame.destroy()
         tr.glow.destroy()
+        this.carried = 'torch'
         this.setTorch(true)
         Audio.play(this, SFX.levelUp)
         this.flashBanner('TORCH LIT', '#ffb24a')
-        break
+        return
       }
     }
+  }
+
+  // Set the carried torch back down as a map torch — go dark to sneak, losing the
+  // wide light (and re-exposing yourself to the freeze in round 2+).
+  dropTorch() {
+    if (this.frozen || this.carried !== 'torch') return
+    this.carried = null
+    this._noPickT = 0.7 // brief grace so you don't instantly re-grab it
+    this.setTorch(false)
+    this.spawnTorch(this.player.x, this.player.y + 10)
+    Audio.play(this, SFX.click)
+    this.flashBanner('TORCH DROPPED', '#8ea0c0')
   }
 
   setTorch(on) {
     this.hasTorch = on
     if (this.carryFlame) this.carryFlame.setVisible(on)
     this.updateTorchHud()
+    this.updateInventoryHud()
   }
 
   roundCleared() {
@@ -494,18 +588,22 @@ export default class NightHuntScene extends Phaser.Scene {
   handleObjectives(dt) {
     let remaining = 0
     let idx = 0
+    let channeling = false
     for (const o of this.objectives) {
       if (!o.done) {
         remaining++
         const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, o.x, o.y)
-        if (d < OBJ_RADIUS && this.interacting) {
+        if (d < OBJ_RADIUS && this.interacting && !this.frozen) {
+          channeling = true
           o.progress = Math.min(1, o.progress + dt / OBJ_HOLD)
           this._burst = Math.max(this._burst, 0.5) // channeling is audible
+          this.chestAlarm(o, dt)
           if (o.progress >= 1) {
             o.done = true
             this._burst = 1.3 // completing is LOUD
             CombatSystem.puff(this, o.x, o.y - 8, 0xffe066)
             Audio.play(this, SFX.clear)
+            this.hunters.forEach((h) => h.distract(o.x, o.y))
             if (this.pips[idx]) this.pips[idx].clearTint()
           }
         } else {
@@ -515,7 +613,19 @@ export default class NightHuntScene extends Phaser.Scene {
       this.drawObjRing(o)
       idx++
     }
+    if (!channeling) this._alarmT = 0
     if (remaining === 0 && !this.exitOpen) this.openExit()
+  }
+
+  // Opening a chest shrieks an alarm and drags every hunter toward it regardless of
+  // their sense — an objective is always a gamble, never a safe grind.
+  chestAlarm(o, dt) {
+    this._alarmT -= dt
+    if (this._alarmT <= 0) {
+      this._alarmT = 0.5
+      Audio.play(this, SFX.crit, { volume: 0.6 })
+      this.hunters.forEach((h) => h.distract(o.x, o.y))
+    }
   }
 
   drawObjRing(o) {
@@ -548,10 +658,19 @@ export default class NightHuntScene extends Phaser.Scene {
     }
   }
 
+  nearUnfinishedObjective() {
+    for (const o of this.objectives) {
+      if (!o.done && Phaser.Math.Distance.Between(this.player.x, this.player.y, o.x, o.y) < OBJ_RADIUS) return true
+    }
+    return false
+  }
+
   checkCatch() {
-    if (!this.hunter) return
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.hunter.x, this.hunter.y) < CATCH_DIST) {
-      this.playerDeath()
+    for (const h of this.hunters) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, h.x, h.y) < CATCH_DIST) {
+        this.playerDeath()
+        return
+      }
     }
   }
 
@@ -560,7 +679,7 @@ export default class NightHuntScene extends Phaser.Scene {
     const p = this.player
     const ox = h.x
     const oy = h.y - h.displayHeight * 0.3
-    const tint = SENSES[this.activeSense].color
+    const tint = SENSES[h.senseKey].color
     if (h.skin.attack === 'volley') {
       Audio.play(this, SFX.slash)
       const base = Math.atan2(p.y - oy, p.x - ox)
@@ -635,7 +754,7 @@ export default class NightHuntScene extends Phaser.Scene {
   // ---- darkness -------------------------------------------------------------
   makeLights() {
     this.makeLight('hunt-light', LIGHT_RADIUS, 1)
-    this.makeLight('hunt-light-sm', SMALL_LIGHT, 0.55)
+    this.makeLight('hunt-light-sm', SMALL_LIGHT, 0.85)
     this.makeLight('hunt-torch-light', TORCH_LIGHT, 0.9)
   }
 
@@ -663,7 +782,7 @@ export default class NightHuntScene extends Phaser.Scene {
   updateFog() {
     const cam = this.cameras.main
     this.fog.clear()
-    this.fog.fill(0x05060a, 0.97)
+    this.fog.fill(0x05060a, 1) // pitch black outside the lights
     // ambient torch pools first
     for (const tr of this.torches) {
       this.fog.erase('hunt-torch-light', tr.x - cam.scrollX - TORCH_LIGHT, tr.y - cam.scrollY - TORCH_LIGHT)
@@ -674,10 +793,10 @@ export default class NightHuntScene extends Phaser.Scene {
     const sx = this.player.x - cam.scrollX
     const sy = this.player.y - cam.scrollY
     this.fog.erase(pkey, sx - pr, sy - pr)
-    if (this.hunter && this.hunter.mode === 'CHASE') {
-      const hx = this.hunter.x - cam.scrollX
-      const hy = this.hunter.y - cam.scrollY
-      this.fog.erase('hunt-light-sm', hx - SMALL_LIGHT, hy - SMALL_LIGHT)
+    for (const h of this.hunters) {
+      if (h.mode === 'CHASE') {
+        this.fog.erase('hunt-light-sm', h.x - cam.scrollX - SMALL_LIGHT, h.y - cam.scrollY - SMALL_LIGHT)
+      }
     }
   }
 
@@ -690,32 +809,39 @@ export default class NightHuntScene extends Phaser.Scene {
       c.setTint(0x47506a)
       this.pips.push(c)
     }
-    this.senseBg = this.add.image(GAME_WIDTH - 158, 18, 'ui', 3).setScrollFactor(0).setDepth(9500).setDisplaySize(26, 26)
     this.senseIcon = this.add.graphics().setScrollFactor(0).setDepth(9501)
-    this.senseText = pixelText(this, GAME_WIDTH - 142, 18, '', 9, '#cdd7ee').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9501)
+    this.senseText = pixelText(this, GAME_WIDTH - 12, 32, '', 7, '#cdd7ee').setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
 
     const menu = panelButton(this, GAME_WIDTH - 40, GAME_HEIGHT - 16, 'MENU', () => this.scene.start('MainMenu'), { size: 8, width: 60, depth: 9500 })
     menu.bg.setScrollFactor(0)
     menu.text.setScrollFactor(0)
 
-    // stamina bar (next to ROUND), lure ammo, torch state, hero + controls hint
+    // stamina + warmth bars (next to ROUND), inventory, torch state, hero + controls
     this.staminaBar = this.add.graphics().setScrollFactor(0).setDepth(9500)
-    this.lureText = pixelText(this, 12, 32, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    this.warmthBar = this.add.graphics().setScrollFactor(0).setDepth(9500)
+    this.invText = pixelText(this, 12, 32, '', 8, '#b6c2d8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     this.torchText = pixelText(this, 12, 46, '', 8, '#ffb24a').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     pixelText(this, 12, 60, 'HERO ' + this.hero.label + '  [H]', 8, '#9fb0d6').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
-    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use  Q lure  H hero', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
+    pixelText(this, 12, GAME_HEIGHT - 14, 'WASD move  SHIFT run  E use/drop  Q throw  H hero', 7, '#7e8aa8').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
 
     // world-space prompt that hovers over the nearest interactable
     this.prompt = pixelText(this, 0, 0, '', 8, '#ffe066').setOrigin(0.5, 1).setDepth(9400).setVisible(false)
   }
 
-  updateLureHud() {
-    if (this.lureText) this.lureText.setText('LURES ' + this.lures + '   [Q]')
+  updateInventoryHud() {
+    if (!this.invText) return
+    const label =
+      this.carried === 'stone'
+        ? 'ITEM  stone  [Q throw]'
+        : this.carried === 'torch'
+          ? 'ITEM  torch  [E drop]'
+          : 'ITEM  —  (empty)'
+    this.invText.setText(label)
   }
 
   updateTorchHud() {
     if (!this.torchText) return
-    this.torchText.setText(this.hasTorch ? 'TORCH  lit (seen!)' : 'NO TORCH').setColor(this.hasTorch ? '#ffb24a' : '#7e8aa8')
+    this.torchText.setText(this.hasTorch ? 'TORCH lit — hunters can see you' : '')
   }
 
   drawStamina() {
@@ -724,9 +850,22 @@ export default class NightHuntScene extends Phaser.Scene {
     const x = 96
     const y = 11
     const w = 68
-    const h = 7
+    const h = 6
     g.fillStyle(0x0a0c14, 0.7).fillRect(x - 1, y - 1, w + 2, h + 2)
     g.fillStyle(this.exhausted ? 0xe06a6a : 0x7cfc98, 1).fillRect(x, y, w * this.stamina, h)
+  }
+
+  drawWarmth() {
+    const g = this.warmthBar
+    g.clear()
+    if (this.round < 2) return
+    const x = 96
+    const y = 20
+    const w = 68
+    const h = 5
+    g.fillStyle(0x0a0c14, 0.7).fillRect(x - 1, y - 1, w + 2, h + 2)
+    const col = this.frozen ? 0x9ad0ff : this.warmth < 0.45 ? 0x6fb6ff : 0xffd27c
+    g.fillStyle(col, 1).fillRect(x, y, w * this.warmth, h)
   }
 
   // Float a "HOLD E" / "ENTER" hint over the closest objective or the open exit.
@@ -759,11 +898,14 @@ export default class NightHuntScene extends Phaser.Scene {
   }
 
   updateHudSense() {
-    const sn = SENSES[this.activeSense]
-    const col = '#' + sn.color.toString(16).padStart(6, '0')
-    this.senseText.setText(sn.code).setColor(col)
     this.senseIcon.clear()
-    this.drawSenseIcon(this.senseIcon, GAME_WIDTH - 158, 18, sn.glyph, sn.color)
+    const codes = []
+    this.activeSenses.forEach((key, i) => {
+      const sn = SENSES[key]
+      this.drawSenseIcon(this.senseIcon, GAME_WIDTH - 22 - i * 24, 16, sn.glyph, sn.color)
+      codes.push(sn.key)
+    })
+    this.senseText.setText(codes.join(' + '))
   }
 
   drawSenseIcon(g, x, y, glyph, color) {
@@ -784,16 +926,21 @@ export default class NightHuntScene extends Phaser.Scene {
   // ---- banners + overlays ---------------------------------------------------
   showRule() {
     this.clearBanner()
-    const sn = SENSES[this.activeSense]
-    const col = '#' + sn.color.toString(16).padStart(6, '0')
     const y = 108
-    const bg = uiPanel(this, GAME_WIDTH / 2, y, 330, 76, { originX: 0.5, originY: 0.5, depth: 11000 }).setScrollFactor(0)
-    const t1 = pixelText(this, GAME_WIDTH / 2, y - 18, 'THE HUNTER USES', 8, '#8ea0c0').setScrollFactor(0).setDepth(11001)
-    const code = pixelText(this, GAME_WIDTH / 2 + 18, y + 8, `${sn.code} = true`, 13, col).setScrollFactor(0).setDepth(11001)
-    const icon = this.add.graphics().setScrollFactor(0).setDepth(11001)
-    this.drawSenseIcon(icon, GAME_WIDTH / 2 - 116, y + 9, sn.glyph, sn.color)
-    this.bannerEls = [bg, t1, code, icon]
-    this.time.delayedCall(2600, () => {
+    const bg = uiPanel(this, GAME_WIDTH / 2, y, 360, 84, { originX: 0.5, originY: 0.5, depth: 11000 }).setScrollFactor(0)
+    const head = this.hunters.length > 1 ? `${this.hunters.length} HUNTERS USE` : 'THE HUNTER USES'
+    const t1 = pixelText(this, GAME_WIDTH / 2, y - 26, head, 8, '#8ea0c0').setScrollFactor(0).setDepth(11001)
+    this.bannerEls = [bg, t1]
+    this.activeSenses.forEach((key, i) => {
+      const sn = SENSES[key]
+      const col = '#' + sn.color.toString(16).padStart(6, '0')
+      const yy = y - 4 + i * 18
+      const icon = this.add.graphics().setScrollFactor(0).setDepth(11001)
+      this.drawSenseIcon(icon, GAME_WIDTH / 2 - 120, yy, sn.glyph, sn.color)
+      const code = pixelText(this, GAME_WIDTH / 2 - 100, yy, `${sn.code} = true`, 11, col).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11001)
+      this.bannerEls.push(icon, code)
+    })
+    this.time.delayedCall(2800, () => {
       if (!this.bannerEls.length) return
       this.tweens.add({ targets: this.bannerEls, alpha: 0, duration: 400, onComplete: () => this.clearBanner() })
     })
@@ -841,10 +988,16 @@ export default class NightHuntScene extends Phaser.Scene {
     const lureBtn = TouchState.attackH
     if (Phaser.Input.Keyboard.JustDown(this.keys.Q) || (lureBtn && !this._prevLureBtn)) this.throwLure()
     this._prevLureBtn = lureBtn
+    // tap USE/E away from an objective to set down a carried torch
+    const useBtn = this.keys.E.isDown || TouchState.attackL
+    if (useBtn && !this._prevUseBtn && this.carried === 'torch' && !this.nearUnfinishedObjective()) this.dropTorch()
+    this._prevUseBtn = useBtn
     this.updateScent(dt)
+    if (this._noPickT > 0) this._noPickT -= dt
     this.handlePickups()
     this.drawStamina()
-    if (this.hunter) this.hunter.think(dt)
+    this.drawWarmth()
+    for (const h of this.hunters) h.think(dt)
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()
