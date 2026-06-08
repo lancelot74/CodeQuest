@@ -46,9 +46,9 @@ const STAM_DRAIN = 0.55
 const STAM_REGEN = 0.4
 const STAM_FLOOR = 0.25
 
-// exposure / freeze (round 2+): standing in darkness with no torch drains warmth;
-// at zero the hero freezes in place for a beat — easy prey. Torchlight (carried, or
-// a map torch's glow) warms you; carrying a torch makes you immune.
+// exposure / freeze (hero.freeze debuff): standing in darkness with no torch drains
+// warmth; at zero the hero freezes in place for a beat — easy prey. Torchlight (carried,
+// or a map torch's glow) warms you; carrying a torch makes you immune.
 const WARM_MAX = 1
 const COLD_DRAIN = 0.15 // slower onset — freezing takes a bit more time
 const WARM_REGEN = 0.5
@@ -85,6 +85,7 @@ const HERO_DEBUFFS = [
   { label: 'hero.hunger--', apply: (s) => (s.hungerDrainMul *= 2) },
   { label: 'hero.noise++', apply: (s) => (s.loudMul *= 1.6) },
   { label: 'hero.stamina--', apply: (s) => (s.staminaDrainMul *= 1.5) },
+  { label: 'hero.freeze++', apply: (s) => (s.freezeOn = true) },
 ]
 
 // NIGHT HUNT — a top-down survival-horror roguelite (Cobb Can Move-style). Roam a
@@ -233,7 +234,7 @@ export default class NightHuntScene extends Phaser.Scene {
     const t = TouchState
     this.interacting = k.E.isDown || t.attackL
 
-    // exposure/freeze (round 2+): refill near torchlight, drain in the dark
+    // exposure/freeze (hero.freeze debuff): refill near torchlight, drain in the dark
     this.updateWarmth(dt)
     if (this.trapped) {
       // stuck in a hole: rooted in place and helpless until you mash free
@@ -327,11 +328,12 @@ export default class NightHuntScene extends Phaser.Scene {
     }
   }
 
-  // Exposure: only matters from round 2. Carrying a torch keeps you fully warm;
-  // otherwise standing in a map torch's glow warms you and darkness chills you. Hit
-  // zero and the hero freezes in place for a beat — defenceless against the hunter.
+  // Exposure: only active when the hero.freeze debuff is rolled this round.
+  // Carrying a torch keeps you fully warm; otherwise standing in a map torch's
+  // glow warms you and darkness chills you. Hit zero and the hero freezes in
+  // place for a beat — defenceless against the hunter.
   updateWarmth(dt) {
-    if (this.round < 2 || this.frozen) return
+    if (!this.freezeOn || this.frozen) return
     if (this.hasTorch || this.nearTorchLight()) {
       this.warmth = Math.min(WARM_MAX, this.warmth + WARM_REGEN * dt)
       this.player.clearTint()
@@ -507,6 +509,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.chaseSpeedMul = 1
     this.senseRangeMul = 1
     this.awareUpMul = 1
+    this.freezeOn = false
     this.activePowers = []
     this.activeDebuffs = []
   }
@@ -1108,7 +1111,7 @@ export default class NightHuntScene extends Phaser.Scene {
   drawWarmth() {
     const g = this.warmthBar
     g.clear()
-    if (this.round < 2) return
+    if (!this.freezeOn) return
     const x = 96
     const y = 20
     const w = 68
