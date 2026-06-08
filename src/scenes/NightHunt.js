@@ -513,13 +513,44 @@ export default class NightHuntScene extends Phaser.Scene {
 
   rollModifiers() {
     this.resetModifiers()
-    const total = this.round
-    const nPow = Phaser.Math.Clamp(Phaser.Math.Between(1, total), 1, BOSS_POWERS.length)
-    const nDeb = Phaser.Math.Clamp(total - nPow, 0, HERO_DEBUFFS.length)
-    this.activePowers = Phaser.Utils.Array.Shuffle([...BOSS_POWERS]).slice(0, nPow)
-    this.activeDebuffs = Phaser.Utils.Array.Shuffle([...HERO_DEBUFFS]).slice(0, nDeb)
-    for (const m of this.activePowers) m.apply(this)
-    for (const m of this.activeDebuffs) m.apply(this)
+    let remaining = this.round
+
+    // a hunter (with its sense) always exists and counts as the first unit;
+    // extra hunters come from the "duplicate" power, up to 3 senses total.
+    let hunters = 1
+    remaining -= 1
+
+    const powerPool = Phaser.Utils.Array.Shuffle([...BOSS_POWERS])
+    const debuffPool = Phaser.Utils.Array.Shuffle([...HERO_DEBUFFS])
+    const powers = []
+    const debuffs = []
+
+    // guarantee one boss power whenever the budget can afford it
+    if (remaining > 0) {
+      powers.push(powerPool.pop())
+      remaining--
+    }
+
+    // spend the rest at random across the three categories, until the budget
+    // runs out or every category is maxed (3 hunters, 4 powers, 4 debuffs)
+    while (remaining > 0) {
+      const opts = []
+      if (hunters < 3) opts.push('dup')
+      if (powers.length < BOSS_POWERS.length) opts.push('pow')
+      if (debuffs.length < HERO_DEBUFFS.length) opts.push('deb')
+      if (!opts.length) break
+      const pick = opts[Phaser.Math.Between(0, opts.length - 1)]
+      if (pick === 'dup') hunters++
+      else if (pick === 'pow') powers.push(powerPool.pop())
+      else debuffs.push(debuffPool.pop())
+      remaining--
+    }
+
+    this.hunterCount = hunters
+    this.activePowers = powers
+    this.activeDebuffs = debuffs
+    for (const m of powers) m.apply(this)
+    for (const m of debuffs) m.apply(this)
   }
 
   // ---- round flow -----------------------------------------------------------
@@ -528,11 +559,13 @@ export default class NightHuntScene extends Phaser.Scene {
     this.clearProjectiles()
     this.clearRoundEntities()
 
-    // escalation: round R fields min(R,3) hunters, each a distinct sense + skin
-    const n = Phaser.Math.Clamp(this.round, 1, 3)
+    // round R spends R "modifier units" across hunter senses (the duplicate
+    // power), boss powers and hero debuffs — see rollModifiers(). Senses are
+    // part of the budget now, so the hunter count is whatever it allocated.
+    this.rollModifiers()
+    const n = this.hunterCount
     this.activeSenses = Phaser.Utils.Array.Shuffle(Object.keys(SENSES)).slice(0, n)
     this.activeSkins = Phaser.Utils.Array.Shuffle(Object.keys(SKINS)).slice(0, n)
-    this.rollModifiers()
 
     // chests grow from round 2 on; exits from round 3 on (round-1 of them)
     this.chestCount = 3 + Math.max(0, this.round - 1)
