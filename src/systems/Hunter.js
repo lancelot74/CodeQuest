@@ -25,6 +25,8 @@ const HUNT_SPEED = 92 // suspicious / search drift
 const CHASE_SPEED = 116 // slower than a sprint (168) so a chase can be broken
 const GIVE_UP = 2.8 // seconds of lost contact before a chase collapses to CALM
 const CALM_TIME = 2.2 // cooldown spent wandering before going back on patrol
+const LINGER_PAUSE = 1.4 // a suspicious hunter that loses the live trail freezes to "listen" this long
+const INVESTIGATE_TIME = 5 // ...then commits to creeping toward the last cue for this long before giving up
 const RAGE_TIME = 6 // a CHASE (enraged) burns itself out after this long, even if it still sees you
 const RAGE_COOLDOWN = 4 // ...then it's winded and can't re-enrage for this long (your escape window)
 const STUN_TIME = 3 // on burnout it stands dead-still, meter emptied, for this long before recovering
@@ -62,6 +64,9 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.chaseTimer = 0
     this.rageCooldown = 0
     this.stunTimer = 0
+    this.lingerTimer = 0
+    this.investigateTimer = 0
+    this._wasSensing = false
 
     // sits in the world depth band (below the fog) so darkness hides it like the
     // hunter sprite — you only see the awareness ring when the hunter is actually lit
@@ -93,9 +98,10 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
 
   think(dt) {
     let { sig, x, y } = this.senseSignal()
-    // a carried torch betrays you regardless of the active sense, if in line of sight
+    // a carried torch only gives you away to a SIGHT hunter — the light is a visual
+    // tell; a hearing or smell hunter isn't drawn to it
     const s = this.scene
-    if (s.hasTorch) {
+    if (s.hasTorch && this.senseKey === 'sight') {
       const td = Phaser.Math.Distance.Between(this.x, this.y, s.player.x, s.player.y)
       if (td < TORCH_SEEN_RANGE && s.losClear(this.x, this.y, s.player.x, s.player.y)) {
         const tsig = 1 - td / TORCH_SEEN_RANGE
@@ -106,14 +112,22 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
         }
       }
     }
+    const investigating = this.investigateTimer > 0 && this.mode !== 'CHASE'
     if (sig > 0) {
       this.awareness = Math.min(1, this.awareness + AWARE_UP * (s.awareUpMul || 1) * sig * dt)
       this.lastCue = { x, y }
       this.lostTimer = 0
+      if (this.awareness >= 0.3) this.investigateTimer = INVESTIGATE_TIME // commit while actively sensing
     } else {
-      this.awareness = Math.max(0, this.awareness - AWARE_DOWN * dt)
+      // mid-investigation it forgets slower, so suspicion lingers instead of vanishing
+      this.awareness = Math.max(0, this.awareness - AWARE_DOWN * (investigating ? 0.4 : 1) * dt)
       this.lostTimer += dt
+      // the instant a suspicious hunter loses the live trail, freeze to "listen" a moment
+      if (this._wasSensing && this.investigateTimer > 0 && this.mode !== 'CHASE') this.lingerTimer = LINGER_PAUSE
     }
+    this._wasSensing = sig > 0
+    this.investigateTimer = Math.max(0, this.investigateTimer - dt)
+    this.lingerTimer = Math.max(0, this.lingerTimer - dt)
 
     this.updateMode(sig, dt)
 
@@ -133,10 +147,15 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       }
       this.attackTimer = Math.max(0, this.attackTimer - dt)
     } else if (this.mode === 'SUSPICIOUS') {
-      this.moveToward(this.lastCue.x, this.lastCue.y, HUNT_SPEED, dt)
+      // hold still right after losing the trail, then close at full pace if still sensed
+      // or creep slowly toward the last cue once it's gone
+      if (this.lingerTimer > 0) this.body.setVelocity(0, 0)
+      else this.moveToward(this.lastCue.x, this.lastCue.y, sig > 0 ? HUNT_SPEED : HUNT_SPEED * 0.45, dt)
     } else if (this.mode === 'SEARCH') {
-      if (this.moveToward(this.lastCue.x, this.lastCue.y, HUNT_SPEED * 0.85, dt)) {
-        this.lastCue = this.scene.randomPatrolPoint(this.x, this.y, 120)
+      if (this.lingerTimer > 0) {
+        this.body.setVelocity(0, 0)
+      } else if (this.moveToward(this.lastCue.x, this.lastCue.y, HUNT_SPEED * 0.45, dt)) {
+        this.lastCue = this.scene.randomPatrolPoint(this.x, this.y, 110)
       }
     } else {
       if (this.moveToward(this.patrol.x, this.patrol.y, PATROL_SPEED, dt)) {
@@ -192,7 +211,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     }
     if (a >= 1 && this.rageCooldown <= 0) this.enrage()
     else if (a >= 0.45) this.mode = 'SUSPICIOUS'
-    else if (a > 0.08) this.mode = 'SEARCH'
+    else if (a > 0.08 || this.investigateTimer > 0) this.mode = 'SEARCH'
     else this.mode = 'PATROL'
   }
 
