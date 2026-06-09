@@ -12,6 +12,7 @@ import GameScene from './scenes/Game.js'
 import HUDScene from './scenes/HUD.js'
 import GameOverScene from './scenes/GameOver.js'
 import CodexScene from './scenes/Codex.js'
+import SettingsScene from './scenes/Settings.js'
 import AgeOfWarScene from './scenes/AgeOfWar.js'
 import NightHuntScene from './scenes/NightHunt.js'
 
@@ -29,6 +30,7 @@ new Phaser.Game(
     HUDScene,
     GameOverScene,
     CodexScene,
+    SettingsScene,
     AgeOfWarScene,
     NightHuntScene,
   ]),

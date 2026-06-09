@@ -12,7 +12,7 @@ function defaultSave() {
     player: { level: 1, xp: 0, maxHp: 100, attack: 10 },
     progress: { clearedLevels: [], unlockedWorlds: ['matlab'] },
     codex: { unlockedLessons: [] },
-    settings: { musicVol: 0.6, sfxVol: 0.8, muted: false },
+    settings: { musicVol: 0.85, sfxVol: 0.45, muted: false },
   }
 }
 

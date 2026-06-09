@@ -107,4 +107,10 @@ export const Music = {
     curKey = null
     curSound = null
   },
+
+  // Re-apply the saved music volume to the live loop — lets the settings slider
+  // retune the currently playing track instantly while dragging.
+  refresh() {
+    if (curSound) curSound.setVolume(musVol())
+  },
 }
