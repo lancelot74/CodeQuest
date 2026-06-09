@@ -63,12 +63,13 @@ function musVol(scale = 1) {
 
 // Tween a Phaser sound's volume; optionally stop it once silent. Guard the target so a
 // sound destroyed mid-tween doesn't throw.
-function fade(scene, sound, to, ms, stopAtEnd = false) {
+function fade(scene, sound, to, ms, { stopAtEnd = false, ease } = {}) {
   if (!sound) return
   scene.tweens.add({
     targets: sound,
     volume: to,
     duration: ms,
+    ease,
     onComplete: () => {
       if (stopAtEnd && sound) sound.stop()
     },
@@ -86,8 +87,11 @@ export const Music = {
     next.play()
     curKey = key
     curSound = next
-    fade(scene, next, musVol(), ms)
-    if (prev) fade(scene, prev, 0, ms, true)
+    // Equal-power crossfade (sin in / cos out): the loops overlap at full perceived
+    // loudness through the swap, instead of both sitting at ~50% mid-fade and leaving
+    // an audible gap.
+    fade(scene, next, musVol(), ms, { ease: 'Sine.easeOut' })
+    if (prev) fade(scene, prev, 0, ms, { stopAtEnd: true, ease: 'Sine.easeIn' })
   },
 
   // One-shot cue over the current loop: duck the loop, play the cue, restore on end.
@@ -103,7 +107,7 @@ export const Music = {
   },
 
   stop(scene, { fade: ms = 600 } = {}) {
-    if (curSound) fade(scene, curSound, 0, ms, true)
+    if (curSound) fade(scene, curSound, 0, ms, { stopAtEnd: true })
     curKey = null
     curSound = null
   },

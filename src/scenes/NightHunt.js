@@ -19,8 +19,8 @@ const SPRINT_SPEED = 168
 const LIGHT_RADIUS = 104 // player light WITH a torch
 const SMALL_LIGHT = 30 // player light without a torch (immediate surroundings only)
 const TORCH_LIGHT = 80 // ambient pool cast by a map torch
-const TENSION_RANGE = 220 // a moving hunter this close, unseen in the dark, raises the music
-const TENSION_HOLD = 2.5 // keep the tension track this long after the danger clears
+const TENSION_HOLD = 2.5 // keep the tension track this long after the hunter leaves sight
+const DEATH_TENSION_HOLD = 3.5 // on a catch, hold the tension loop this long before easing back
 const OBJ_RADIUS = 34
 const OBJ_HOLD = 1.5 // seconds to channel an objective
 const EXIT_RADIUS = 30
@@ -1260,6 +1260,10 @@ export default class NightHuntScene extends Phaser.Scene {
     if (this.trapText) this.trapText.setVisible(false)
     this.player.body.setVelocity(0, 0)
     Audio.play(this, SFX.playerDie)
+    // Let the dread ride out on the tension loop, then ease back to the main theme. update()
+    // bails on gameOver, so this delayed swap won't be fought by updateMusicState.
+    Music.play(this, 'bgm-tension', { fade: 400 })
+    this.time.delayedCall(DEATH_TENSION_HOLD * 1000, () => Music.play(this, 'bgm-main', { fade: 1400 }))
     CombatSystem.shake(this, 0.012, 320)
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 34, 'CAUGHT', 26, '#e06a6a').setScrollFactor(0).setDepth(11001)
@@ -1318,20 +1322,26 @@ export default class NightHuntScene extends Phaser.Scene {
     this.updateFog()
   }
 
-  // Swap to the tension loop while a hunter is creeping nearby in the dark, back to the
-  // main loop once it's stayed clear for a beat. Music.play no-ops on the current key, so
+  // Swap to the tension loop the instant the player catches sight of a hunter — any pixel
+  // of it crossing into the light, or an enraged chaser (which self-illuminates as it
+  // charges) — and back to the main loop once it's stayed out of sight for a beat. A hunter
+  // lying low in the dark no longer triggers it. Music.play no-ops on the current key, so
   // this only crossfades on an actual change.
   updateMusicState(dt) {
     const lit = this.hasTorch ? LIGHT_RADIUS : SMALL_LIGHT
-    let danger = false
+    let seen = false
     for (const h of this.hunters) {
+      if (h.mode === 'CHASE') {
+        seen = true
+        break
+      }
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, h.x, h.y)
-      if (d < TENSION_RANGE && d > lit && h.body.velocity.lengthSq() > 25) {
-        danger = true
+      if (d < lit + h.displayWidth * 0.5) {
+        seen = true
         break
       }
     }
-    this._tensionHold = danger ? TENSION_HOLD : Math.max(0, this._tensionHold - dt)
+    this._tensionHold = seen ? TENSION_HOLD : Math.max(0, this._tensionHold - dt)
     Music.play(this, this._tensionHold > 0 ? 'bgm-tension' : 'bgm-main', { fade: 900 })
   }
 }
