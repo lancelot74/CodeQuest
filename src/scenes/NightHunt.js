@@ -19,7 +19,7 @@ const SPRINT_SPEED = 168
 const LIGHT_RADIUS = 104 // player light WITH a torch
 const SMALL_LIGHT = 30 // player light without a torch (immediate surroundings only)
 const TORCH_LIGHT = 80 // ambient pool cast by a map torch
-const TENSION_HOLD = 2.5 // keep the tension track this long after the hunter leaves sight
+const TENSION_HOLD = 5.5 // keep the tension track this long after the hunter leaves sight
 const DEATH_TENSION_HOLD = 3.5 // on a catch, hold the tension loop this long before easing back
 const OBJ_RADIUS = 34
 const OBJ_HOLD = 1.5 // seconds to channel an objective
@@ -37,7 +37,7 @@ const HOMING_SPEED = 150 // ooze spit — deliberately slow so it can be outrun
 
 // hunger: drains slowly every round; emptied it slows the hero. Food refills it.
 const HUNGER_MAX = 1
-const HUNGER_DRAIN = 0.045 // ~22s from full to starving
+const HUNGER_DRAIN = 0.025 // ~40s from full to starving
 const FOOD_REFILL = 0.45
 const STARVE_SLOW = 0.7 // movement multiplier while starving
 
@@ -977,6 +977,18 @@ export default class NightHuntScene extends Phaser.Scene {
       } else {
         orb.x += orb._vx * dt
         orb.y += orb._vy * dt
+      }
+      // only the stump blocks a shot — the same base collider that stops the player, not the
+      // taller leaf/body footprint (wallRects) used for line-of-sight
+      if (
+        this.wallZones.some((z) => {
+          const b = z.body
+          return orb.x >= b.x - 6 && orb.x <= b.x + b.width + 6 && orb.y >= b.y - 6 && orb.y <= b.y + b.height + 6
+        })
+      ) {
+        CombatSystem.puff(this, orb.x, orb.y, orb.tintTopLeft || 0xffffff)
+        this.killProj(orb)
+        continue
       }
       const hitR = orb._kind === 'wave' ? 28 : 15
       if (Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y) < hitR) {
