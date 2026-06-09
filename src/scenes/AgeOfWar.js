@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { addBackdrop, panelButton, pixelText } from '../ui/widgets.js'
-import { Audio, SFX } from '../systems/AudioSystem.js'
+import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import WarUnit, { UNIT_TYPES } from '../systems/WarUnit.js'
 
@@ -21,6 +21,7 @@ export default class AgeOfWarScene extends Phaser.Scene {
   }
 
   create() {
+    Music.stop(this)
     // Anchors read by WarUnit.
     this.PLAYER_SPAWN_X = 80
     this.ENEMY_SPAWN_X = GAME_WIDTH - 80

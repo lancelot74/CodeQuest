@@ -5,7 +5,7 @@ import { ContentLoader } from '../systems/ContentLoader.js'
 import Player from '../systems/Player.js'
 import Enemy from '../systems/Enemy.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
-import { Audio, SFX } from '../systems/AudioSystem.js'
+import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { heroKit } from '../utils/constants.js'
 import { pixelText } from '../ui/widgets.js'
@@ -30,6 +30,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    Music.stop(this)
     const content = new ContentLoader(this)
     this.worldDef = content.world(this.worldId)
     this.level = this.cache.json.get(`level-${this.levelId}`)

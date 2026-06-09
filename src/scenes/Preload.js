@@ -80,6 +80,13 @@ export default class PreloadScene extends Phaser.Scene {
     sfx('sfx-clear', 'impact/Audio/impactBell_heavy_000.ogg')
     sfx('sfx-playerDie', 'impact/Audio/impactPunch_heavy_000.ogg')
 
+    // Background music + cues (Mind's Eye Loops pack, ogg). Keys used by Music.*
+    const mus = (key, file) => this.load.audio(key, `assets/audio/music/${file}`)
+    mus('bgm-main', 'veil-of-night.ogg')
+    mus('bgm-tension', 'mental-vortex.ogg')
+    mus('cue-exit', 'somethings-wrong-in.ogg')
+    mus('cue-chest', 'fredelig-out.ogg')
+
     this.load.json('worlds', 'data/worlds.json')
     this.load.json('lessons', 'data/lessons.json')
     this.load.json('questions', 'data/questions.json')

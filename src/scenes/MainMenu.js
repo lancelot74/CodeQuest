@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { addBackdrop, panelButton, pixelText } from '../ui/widgets.js'
+import { Music } from '../systems/AudioSystem.js'
 
 export default class MainMenuScene extends Phaser.Scene {
   constructor() {
@@ -15,5 +16,7 @@ export default class MainMenuScene extends Phaser.Scene {
     const W = 180
     panelButton(this, GAME_WIDTH / 2, 214, 'GAME', () => this.scene.start('GameSelect'), { width: W })
     panelButton(this, GAME_WIDTH / 2, 256, 'CODEX', () => this.scene.start('Codex'), { width: W })
+
+    Music.play(this, 'bgm-main')
   }
 }

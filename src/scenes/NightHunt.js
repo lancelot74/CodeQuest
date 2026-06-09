@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { pixelText, panelButton, uiPanel } from '../ui/widgets.js'
-import { Audio, SFX } from '../systems/AudioSystem.js'
+import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { TouchState } from '../systems/TouchState.js'
@@ -19,6 +19,8 @@ const SPRINT_SPEED = 168
 const LIGHT_RADIUS = 104 // player light WITH a torch
 const SMALL_LIGHT = 30 // player light without a torch (immediate surroundings only)
 const TORCH_LIGHT = 80 // ambient pool cast by a map torch
+const TENSION_RANGE = 220 // a moving hunter this close, unseen in the dark, raises the music
+const TENSION_HOLD = 2.5 // keep the tension track this long after the danger clears
 const OBJ_RADIUS = 34
 const OBJ_HOLD = 1.5 // seconds to channel an objective
 const EXIT_RADIUS = 30
@@ -156,6 +158,8 @@ export default class NightHuntScene extends Phaser.Scene {
     showTouchControls(TOUCH_LABELS)
     this.events.once('shutdown', () => hideTouchControls())
 
+    this._tensionHold = 0
+    Music.play(this, 'bgm-main') // same track as the menu -> seamless, no restart
     this.startRound()
   }
 
@@ -813,6 +817,7 @@ export default class NightHuntScene extends Phaser.Scene {
             this._burst = 1.3 // completing is LOUD
             CombatSystem.puff(this, o.x, o.y - 8, 0xffe066)
             Audio.play(this, SFX.clear)
+            Music.stinger(this, 'cue-chest')
             this.hunters.forEach((h) => h.distract(o.x, o.y))
             if (this.pips[idx]) this.pips[idx].clearTint()
           }
@@ -870,6 +875,7 @@ export default class NightHuntScene extends Phaser.Scene {
   openOneExit(e) {
     if (e.open) return
     e.open = true
+    if (e.isFinal) Music.stinger(this, 'cue-exit') // the way out just appeared
     e.img.clearTint()
     e.tween = this.tweens.add({ targets: e.img, scale: 1.7, yoyo: true, repeat: -1, duration: 600 })
   }
@@ -1306,8 +1312,26 @@ export default class NightHuntScene extends Phaser.Scene {
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()
+    this.updateMusicState(dt)
     this.updatePrompt()
     this.checkCatch()
     this.updateFog()
+  }
+
+  // Swap to the tension loop while a hunter is creeping nearby in the dark, back to the
+  // main loop once it's stayed clear for a beat. Music.play no-ops on the current key, so
+  // this only crossfades on an actual change.
+  updateMusicState(dt) {
+    const lit = this.hasTorch ? LIGHT_RADIUS : SMALL_LIGHT
+    let danger = false
+    for (const h of this.hunters) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, h.x, h.y)
+      if (d < TENSION_RANGE && d > lit && h.body.velocity.lengthSq() > 25) {
+        danger = true
+        break
+      }
+    }
+    this._tensionHold = danger ? TENSION_HOLD : Math.max(0, this._tensionHold - dt)
+    Music.play(this, this._tensionHold > 0 ? 'bgm-tension' : 'bgm-main', { fade: 900 })
   }
 }

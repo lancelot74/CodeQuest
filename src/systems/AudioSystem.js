@@ -47,3 +47,64 @@ export const Audio = {
     scene.sound.play(key, { volume: vol, rate: opts.rate ?? 1, detune: opts.detune ?? 0 })
   },
 }
+
+// Background music: one looping track at a time, crossfaded on change. Short one-shot
+// "stingers" play over the loop while ducking it, then it fades back. Volume folds in
+// the saved musicVol + mute, mirroring Audio.play. The sound manager is global, so the
+// current loop survives scene transitions — each scene just declares what it wants.
+let curKey = null
+let curSound = null
+
+function musVol(scale = 1) {
+  const s = SaveSystem.data.settings || {}
+  if (s.muted) return 0
+  return (s.musicVol ?? 0.6) * scale
+}
+
+// Tween a Phaser sound's volume; optionally stop it once silent. Guard the target so a
+// sound destroyed mid-tween doesn't throw.
+function fade(scene, sound, to, ms, stopAtEnd = false) {
+  if (!sound) return
+  scene.tweens.add({
+    targets: sound,
+    volume: to,
+    duration: ms,
+    onComplete: () => {
+      if (stopAtEnd && sound) sound.stop()
+    },
+  })
+}
+
+export const Music = {
+  // Crossfade to a looping track. Calling with the track already playing is a no-op,
+  // so menus -> Night Hunt (same key) stay seamless and per-frame calls are cheap.
+  play(scene, key, { fade: ms = 800 } = {}) {
+    if (key === curKey && curSound && curSound.isPlaying) return
+    if (!scene.cache.audio.exists(key)) return
+    const prev = curSound
+    const next = scene.sound.add(key, { loop: true, volume: 0 })
+    next.play()
+    curKey = key
+    curSound = next
+    fade(scene, next, musVol(), ms)
+    if (prev) fade(scene, prev, 0, ms, true)
+  },
+
+  // One-shot cue over the current loop: duck the loop, play the cue, restore on end.
+  stinger(scene, key, { duck = 0.35, fade: ms = 400 } = {}) {
+    if (!scene.cache.audio.exists(key)) return
+    const cue = scene.sound.add(key, { volume: musVol() })
+    if (curSound) fade(scene, curSound, musVol(duck), ms)
+    cue.once('complete', () => {
+      if (curSound) fade(scene, curSound, musVol(), ms)
+      cue.destroy()
+    })
+    cue.play()
+  },
+
+  stop(scene, { fade: ms = 600 } = {}) {
+    if (curSound) fade(scene, curSound, 0, ms, true)
+    curKey = null
+    curSound = null
+  },
+}
