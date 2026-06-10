@@ -41,12 +41,25 @@ export default class MainMenuScene extends Phaser.Scene {
     // full round moon with craters, up in the corner behind the title
     const mx = GAME_WIDTH - 70
     this.moonHalo = this.add.image(mx, 52, 'menu-glow').setScale(1.4).setAlpha(0.22).setTint(0xcdd7ee)
-    this.add.circle(mx, 52, 16, 0xe8edf8, 1)
-    this.add.circle(mx - 5, 47, 3, 0xc6cfe4, 1)
-    this.add.circle(mx + 5, 57, 2.2, 0xc6cfe4, 1)
-    this.add.circle(mx + 7, 46, 1.5, 0xc6cfe4, 1)
-    // sky-colored shadow disc: fading it in carves the full moon into a crescent
-    this.moonShadow = this.add.circle(mx + 6, 47, 14.5, 0x131b35, 1).setAlpha(0)
+    this.fullMoon = [
+      this.add.circle(mx, 52, 16, 0xe8edf8, 1),
+      this.add.circle(mx - 5, 47, 3, 0xc6cfe4, 1),
+      this.add.circle(mx + 5, 57, 2.2, 0xc6cfe4, 1),
+      this.add.circle(mx + 7, 46, 1.5, 0xc6cfe4, 1),
+    ]
+    // true crescent: the lune between the moon's rim and an offset cut, drawn as its
+    // own filled shape — crossfaded with the full disc, the sky shows through the
+    // dark part instead of a shadow ball sitting on the moon
+    const rad = Phaser.Math.DegToRad
+    this.crescent = this.add.graphics()
+    this.crescent.fillStyle(0xe8edf8, 1)
+    this.crescent.beginPath()
+    this.crescent.arc(mx, 52, 16, rad(25), rad(255.5), false)
+    this.crescent.arc(mx + 6, 47, 14.5, rad(226.3), rad(54.1), true)
+    this.crescent.closePath()
+    this.crescent.fillPath()
+    this.crescent.fillStyle(0xc6cfe4, 1).fillCircle(mx - 9, 59.7, 1.8)
+    this.crescent.setAlpha(0)
 
     // forest floor strip along the bottom, dimmed to night
     const stripY = GAME_HEIGHT - 48
@@ -109,7 +122,8 @@ export default class MainMenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.bloodMoon, alpha: blood ? 1 : 0, duration: dur, ease })
     this.tweens.add({ targets: this.bloodHalo, alpha: blood ? 0.26 : 0, duration: dur, ease })
     this.tweens.add({ targets: this.bloodWash, alpha: blood ? 0.22 : 0, duration: dur, ease })
-    this.tweens.add({ targets: this.moonShadow, alpha: crescent ? 1 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.fullMoon, alpha: crescent ? 0 : 1, duration: dur, ease })
+    this.tweens.add({ targets: this.crescent, alpha: crescent ? 1 : 0, duration: dur, ease })
     this.tweens.add({ targets: this.moonHalo, alpha: crescent ? 0.1 : 0.22, duration: dur, ease })
   }
 
