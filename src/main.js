@@ -5,7 +5,6 @@ import PreloadScene from './scenes/Preload.js'
 import MainMenuScene from './scenes/MainMenu.js'
 import GameSelectScene from './scenes/GameSelect.js'
 import ModePageScene from './scenes/ModePage.js'
-import CharacterSelectScene from './scenes/CharacterSelect.js'
 import WorldSelectScene from './scenes/WorldSelect.js'
 import LevelSelectScene from './scenes/LevelSelect.js'
 import GameScene from './scenes/Game.js'
@@ -23,7 +22,6 @@ new Phaser.Game(
     MainMenuScene,
     GameSelectScene,
     ModePageScene,
-    CharacterSelectScene,
     WorldSelectScene,
     LevelSelectScene,
     GameScene,
