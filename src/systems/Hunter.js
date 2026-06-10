@@ -1,19 +1,20 @@
 import Phaser from 'phaser'
 import { Audio, SFX } from './AudioSystem.js'
 
-// The stalker. Rounds spawn 1-3 of them, each with its own SENSE and boss SKIN.
+// The stalker. Rounds spawn 1-3 of them, each with its own SENSE and SKIN.
 // Stealth is the whole game: while one can't sense you it patrols, and only once
 // its awareness meter fills does it CHASE and fire the skin's signature attack.
 export const SENSES = {
-  sight: { key: 'sight', code: 'hunter.sight', color: 0xffd24a, glyph: 'eye' },
-  hearing: { key: 'hearing', code: 'hunter.hearing', color: 0x53d2ff, glyph: 'ear' },
-  smell: { key: 'smell', code: 'hunter.smell', color: 0xb47cff, glyph: 'nose' },
+  sight: { key: 'sight', code: 'hunter.sight', color: 0xffd24a, glyph: 'eye', hint: 'stay dark, stay still' },
+  hearing: { key: 'hearing', code: 'hunter.hearing', color: 0x53d2ff, glyph: 'ear', hint: 'walk - sprinting is loud' },
+  smell: { key: 'smell', code: 'hunter.smell', color: 0xb47cff, glyph: 'nose', hint: 'keep moving, trail decays' },
 }
 
 export const SKINS = {
   demon: { walk: 'demon-walk', scale: 0.7, attack: 'wave', body: [26, 22] },
   mage: { walk: 'mage-walk', scale: 0.62, attack: 'volley', body: [24, 22] },
   ooze: { walk: 'ooze-walk', scale: 0.74, attack: 'homing', body: [28, 20] },
+  eyeball: { walk: 'eyeball-walk', scale: 2, attack: 'snipe', body: [14, 12] }, // 20px frames, so it scales UP
 }
 
 const SIGHT_RANGE = 250
@@ -80,7 +81,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     const s = this.scene
     const p = s.player
     const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y)
-    const sr = s.senseRangeMul || 1 // boss.senseRange++ power widens every sense
+    const sr = s.senseRangeMul || 1 // hunter.senseRange++ power widens every sense
     if (this.senseKey === 'sight') {
       if (d > SIGHT_RANGE * sr || !s.playerLit() || !s.losClear(this.x, this.y, p.x, p.y)) return { sig: 0 }
       const near = 1 - d / (SIGHT_RANGE * sr)
@@ -294,7 +295,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     const p = this.scene.player
     const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y)
     if (this.attackTimer > 0 || d > ATTACK_RANGE) return
-    this.attackTimer = ATTACK_CD * (this.scene.atkCdMul || 1) // boss.attackSpeed++ shortens this
+    this.attackTimer = ATTACK_CD * (this.scene.atkCdMul || 1) // hunter.attackSpeed++ shortens this
     this.setTint(0xffffff)
     this.scene.time.delayedCall(WINDUP * 1000, () => {
       // burned out or the round ended mid-windup: keep the stun tint, swallow the shot

@@ -28,13 +28,6 @@ const MODE_INFO = {
   },
 }
 
-// What beats each sense — shown in the calm of the briefing instead of mid-panic.
-const SENSE_HINTS = {
-  sight: 'stay dark, stay still',
-  hearing: 'walk - sprinting is loud',
-  smell: 'keep moving, trail decays',
-}
-
 export default class ModePageScene extends Phaser.Scene {
   constructor() {
     super('ModePage')
@@ -111,7 +104,7 @@ export default class ModePageScene extends Phaser.Scene {
       drawSenseIcon(g, x, y, sn.glyph, sn.color)
       const col = '#' + sn.color.toString(16).padStart(6, '0')
       pixelText(this, x + 16, y - 6, `${sn.code} = true`, 8, col).setOrigin(0, 0.5)
-      pixelText(this, x + 16, y + 7, SENSE_HINTS[sn.key], 7, '#8ea0c0').setOrigin(0, 0.5)
+      pixelText(this, x + 16, y + 7, sn.hint, 7, '#8ea0c0').setOrigin(0, 0.5)
     })
   }
 }

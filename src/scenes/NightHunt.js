@@ -34,6 +34,7 @@ const TRAP_PRESSES = 7 // E-mashes needed to climb out of a hole
 const VOLLEY_SPEED = 200
 const WAVE_SPEED = 180
 const HOMING_SPEED = 150 // ooze spit — deliberately slow so it can be outrun
+const SNIPE_SPEED = 260 // eyeball bolt — fastest shot, but a single straight line
 
 // hunger: drains slowly every round; emptied it slows the hero. Food refills it.
 const HUNGER_MAX = 1
@@ -73,32 +74,32 @@ const HEROES = [
 ]
 const TOUCH_LABELS = { jump: 'RUN', attack: 'USE', heavy: null }
 
-// Per-round modifiers. Round N rolls N of these total (boss powers + hero debuffs),
-// always including at least one boss power. Each mutates a scene multiplier that the
-// scene and Hunter.js read live.
-const BOSS_POWERS = [
-  { label: 'boss.attackSpeed++', apply: (s) => (s.atkCdMul *= 0.6) },
-  { label: 'boss.moveSpeed++', apply: (s) => (s.chaseSpeedMul *= 1.25) },
-  { label: 'boss.senseRange++', apply: (s) => (s.senseRangeMul *= 1.3) },
-  { label: 'boss.awareness++', apply: (s) => (s.awareUpMul *= 1.4) },
+// Per-round modifiers. Round N rolls N of these total (hunter powers + hero debuffs),
+// always including at least one hunter power. Each mutates a scene multiplier that the
+// scene and Hunter.js read live; hint is the plain-language line in the rules box.
+const HUNTER_POWERS = [
+  { label: 'hunter.attackSpeed++', hint: 'it fires faster', apply: (s) => (s.atkCdMul *= 0.6) },
+  { label: 'hunter.moveSpeed++', hint: 'it chases faster', apply: (s) => (s.chaseSpeedMul *= 1.25) },
+  { label: 'hunter.senseRange++', hint: 'it senses farther', apply: (s) => (s.senseRangeMul *= 1.3) },
+  { label: 'hunter.awareness++', hint: 'it notices you sooner', apply: (s) => (s.awareUpMul *= 1.4) },
 ]
 const HERO_DEBUFFS = [
-  { label: 'hero.moveSpeed--', apply: (s) => (s.moveMul *= 0.82) },
-  { label: 'hero.hunger--', apply: (s) => (s.hungerDrainMul *= 2) },
-  { label: 'hero.noise++', apply: (s) => (s.loudMul *= 1.6) },
-  { label: 'hero.stamina--', apply: (s) => (s.staminaDrainMul *= 1.5) },
-  { label: 'hero.freeze++', apply: (s) => (s.freezeOn = true) },
+  { label: 'hero.moveSpeed--', hint: 'you move slower', apply: (s) => (s.moveMul *= 0.82) },
+  { label: 'hero.hunger--', hint: 'you starve faster', apply: (s) => (s.hungerDrainMul *= 2) },
+  { label: 'hero.noise++', hint: 'your steps are louder', apply: (s) => (s.loudMul *= 1.6) },
+  { label: 'hero.stamina--', hint: 'sprints run out sooner', apply: (s) => (s.staminaDrainMul *= 1.5) },
+  { label: 'hero.freeze++', hint: 'the dark freezes you', apply: (s) => (s.freezeOn = true) },
 ]
 
 // Night events: an optional twist per round from round 2 on, announced as a third
-// code object (night.*) beside the boss powers and hero debuffs. ~40% of rounds roll
+// code object (night.*) beside the hunter powers and hero debuffs. ~40% of rounds roll
 // one (guaranteed after two quiet nights); wash/fog recolor the dark itself so the
 // rule stays visible all round, not just during the banner.
 const NIGHT_EVENTS = [
   {
     key: 'bloodMoon',
     label: 'night.bloodMoon = true',
-    hint: 'wary hunters - but fast chests',
+    hint: 'wary hunters, fast chests',
     wash: 0x2a0a18,
     fog: 0x0a0408,
     apply: (s) => {
@@ -142,7 +143,7 @@ const NIGHT_EVENTS = [
 
 // NIGHT HUNT — a top-down survival-horror roguelite. Roam a
 // dark forest opening chests and reach the exit while 1-3 stalkers hunt you; each
-// round's modifier budget rolls the pack size, senses + boss skins. See Hunter.js.
+// round's modifier budget rolls the pack size, senses + hunter skins. See Hunter.js.
 export default class NightHuntScene extends Phaser.Scene {
   constructor() {
     super('NightHunt')
@@ -645,12 +646,12 @@ export default class NightHuntScene extends Phaser.Scene {
     let hunters = 1
     remaining -= 1
 
-    const powerPool = Phaser.Utils.Array.Shuffle([...BOSS_POWERS])
+    const powerPool = Phaser.Utils.Array.Shuffle([...HUNTER_POWERS])
     const debuffPool = Phaser.Utils.Array.Shuffle([...HERO_DEBUFFS])
     const powers = []
     const debuffs = []
 
-    // guarantee one boss power whenever the budget can afford it
+    // guarantee one hunter power whenever the budget can afford it
     if (remaining > 0) {
       powers.push(powerPool.pop())
       remaining--
@@ -661,7 +662,7 @@ export default class NightHuntScene extends Phaser.Scene {
     while (remaining > 0) {
       const opts = []
       if (hunters < 3) opts.push('dup')
-      if (powers.length < BOSS_POWERS.length) opts.push('pow')
+      if (powers.length < HUNTER_POWERS.length) opts.push('pow')
       if (debuffs.length < HERO_DEBUFFS.length) opts.push('deb')
       if (!opts.length) break
       const pick = opts[Phaser.Math.Between(0, opts.length - 1)]
@@ -698,7 +699,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.clearRoundEntities()
 
     // round R spends R "modifier units" across hunter senses (the duplicate
-    // power), boss powers and hero debuffs — see rollModifiers(). Senses are
+    // power), hunter powers and hero debuffs — see rollModifiers(). Senses are
     // part of the budget now, so the hunter count is whatever it allocated.
     this.rollModifiers()
     const n = this.hunterCount
@@ -1122,6 +1123,12 @@ export default class NightHuntScene extends Phaser.Scene {
       const ang = Math.atan2(p.y - oy, p.x - ox)
       const orb = this.makeOrb(ox, oy, 'wave', { vx: Math.cos(ang) * WAVE_SPEED, vy: Math.sin(ang) * WAVE_SPEED, tint, ttl: 1.5 })
       orb.setScale(2.0, 1.0)
+    } else if (h.skin.attack === 'snipe') {
+      // eyeball gaze-bolt: one fast straight shot with its own bullet sprite —
+      // sidestep it, don't outrun it
+      Audio.play(this, SFX.spit, { rate: 1.3 })
+      const ang = Math.atan2(p.y - oy, p.x - ox)
+      this.makeOrb(ox, oy, 'straight', { vx: Math.cos(ang) * SNIPE_SPEED, vy: Math.sin(ang) * SNIPE_SPEED, tint, ttl: 2.0, tex: 'eye-bullet', scale: 2.4 })
     } else {
       Audio.play(this, SFX.spit)
       this.makeOrb(ox, oy, 'homing', { tint, ttl: 2.6 })
@@ -1129,7 +1136,7 @@ export default class NightHuntScene extends Phaser.Scene {
   }
 
   makeOrb(x, y, kind, opts) {
-    const orb = this.add.image(x, y, 'venom').setDepth(950).setScale(1.1).setTint(opts.tint)
+    const orb = this.add.image(x, y, opts.tex || 'venom').setDepth(950).setScale(opts.scale || 1.1).setTint(opts.tint)
     orb._kind = kind
     orb._vx = opts.vx || 0
     orb._vy = opts.vy || 0
@@ -1423,7 +1430,7 @@ export default class NightHuntScene extends Phaser.Scene {
     })
     this.senseText.setText(codes.join(' + '))
 
-    // everything else in force this round, in the banner's color language: boss
+    // everything else in force this round, in the banner's color language: hunter
     // powers red, hero debuffs blue, the night event orange
     for (const t of this.modEls) t.destroy()
     this.modEls = []
@@ -1440,44 +1447,46 @@ export default class NightHuntScene extends Phaser.Scene {
   }
 
   // ---- banners + overlays ---------------------------------------------------
+  // The round-start briefing card: every rule as a code line on the left with what
+  // it means in plain words on the right. Senses keep their glyphs; hunter powers
+  // read red, hero debuffs blue, the night event orange.
   showRule() {
     this.clearBanner()
-    const mods = [
-      ...this.activePowers.map((m) => ({ text: m.label, color: '#ff7a6b' })),
-      ...this.activeDebuffs.map((m) => ({ text: m.label, color: '#7ab8ff' })),
-    ]
-    if (this.nightEvent) {
-      mods.push({ text: this.nightEvent.label, color: '#ffa64a' })
-      mods.push({ text: this.nightEvent.hint, color: '#8ea0c0' })
-    }
-    const rows = this.activeSenses.length + (mods.length ? mods.length + 1 : 0)
-    const h = 46 + rows * 16
-    const top = 58
-    const bg = uiPanel(this, GAME_WIDTH / 2, top + h / 2, 380, h, { originX: 0.5, originY: 0.5, depth: 11000 }).setScrollFactor(0)
-    const head = this.hunters.length > 1 ? `${this.hunters.length} HUNTERS USE` : 'THE HUNTER USES'
-    const t1 = pixelText(this, GAME_WIDTH / 2, top + 14, head, 8, '#8ea0c0').setScrollFactor(0).setDepth(11001)
-    this.bannerEls = [bg, t1]
-    let yy = top + 30
-    this.activeSenses.forEach((key) => {
+    const rows = this.activeSenses.map((key) => {
       const sn = SENSES[key]
-      const col = '#' + sn.color.toString(16).padStart(6, '0')
-      const icon = this.add.graphics().setScrollFactor(0).setDepth(11001)
-      drawSenseIcon(icon, GAME_WIDTH / 2 - 130, yy, sn.glyph, sn.color)
-      const code = pixelText(this, GAME_WIDTH / 2 - 110, yy, `${sn.code} = true`, 11, col).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11001)
-      this.bannerEls.push(icon, code)
-      yy += 16
+      return { icon: sn, text: `${sn.code} = true`, hint: sn.hint, color: '#' + sn.color.toString(16).padStart(6, '0') }
     })
-    if (mods.length) {
-      const sub = pixelText(this, GAME_WIDTH / 2, yy, '— ROUND ' + this.round + ' MODIFIERS —', 7, '#8ea0c0').setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(11001)
-      this.bannerEls.push(sub)
-      yy += 16
-      mods.forEach((m) => {
-        const t = pixelText(this, GAME_WIDTH / 2, yy, m.text, 9, m.color).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(11001)
-        this.bannerEls.push(t)
-        yy += 16
-      })
+    if (this.nightEvent) rows.push({ text: this.nightEvent.label, hint: this.nightEvent.hint, color: '#ffa64a' })
+    for (const m of this.activePowers) rows.push({ text: m.label, hint: m.hint, color: '#ff7a6b' })
+    for (const m of this.activeDebuffs) rows.push({ text: m.label, hint: m.hint, color: '#7ab8ff' })
+
+    const cx = GAME_WIDTH / 2
+    const W = Math.min(470, GAME_WIDTH - 50)
+    const rowH = 19
+    const h = 64 + rows.length * rowH
+    const top = Math.min(54, Math.max(8, GAME_HEIGHT - h - 14)) // tall late-round cards slide up
+    const bg = uiPanel(this, cx, top + h / 2, W, h, { originX: 0.5, originY: 0.5, depth: 11000 }).setScrollFactor(0)
+    const inner = this.add.rectangle(cx, top + h / 2, W - 8, h - 8, 0x0d1226, 0.94).setScrollFactor(0).setDepth(11000)
+    const head = this.hunters.length > 1 ? `ROUND ${this.round} — ${this.hunters.length} HUNTERS` : `ROUND ${this.round}`
+    const t1 = pixelText(this, cx, top + 20, head, 13, '#ffe066').setScrollFactor(0).setDepth(11001)
+    const t2 = pixelText(this, cx, top + 38, "tonight's rules", 7, '#8ea0c0').setScrollFactor(0).setDepth(11001)
+    const div = this.add.rectangle(cx, top + 48, W - 36, 1, 0x3a4568).setScrollFactor(0).setDepth(11001)
+    this.bannerEls = [bg, inner, t1, t2, div]
+    let yy = top + 62
+    for (const r of rows) {
+      if (r.icon) {
+        const icon = this.add.graphics().setScrollFactor(0).setDepth(11001)
+        drawSenseIcon(icon, cx - W / 2 + 28, yy, r.icon.glyph, r.icon.color)
+        this.bannerEls.push(icon)
+      }
+      const code = pixelText(this, cx - W / 2 + 44, yy, r.text, 9, r.color).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11001)
+      const hint = pixelText(this, cx + W / 2 - 20, yy, r.hint, 7, '#9fb0d6').setOrigin(1, 0.5).setScrollFactor(0).setDepth(11001)
+      this.bannerEls.push(code, hint)
+      yy += rowH
     }
-    this.time.delayedCall(3200, () => {
+    for (const e of this.bannerEls) e.setAlpha(0)
+    this.tweens.add({ targets: this.bannerEls, alpha: 1, duration: 280, ease: 'Quad.easeOut' })
+    this.time.delayedCall(4200, () => {
       if (!this.bannerEls.length) return
       this.tweens.add({ targets: this.bannerEls, alpha: 0, duration: 400, onComplete: () => this.clearBanner() })
     })
@@ -1606,6 +1615,8 @@ export default class NightHuntScene extends Phaser.Scene {
       }
     }
     this._tensionHold = seen ? TENSION_HOLD : Math.max(0, this._tensionHold - dt)
-    Music.play(this, this._tensionHold > 0 ? 'bgm-tension' : 'bgm-main', { fade: 900 })
+    // stuck in a hole the music itself panics; the fast fade sells the drop
+    const want = this.trapped ? 'bgm-trap' : this._tensionHold > 0 ? 'bgm-tension' : 'bgm-main'
+    Music.play(this, want, { fade: this.trapped ? 350 : 900 })
   }
 }

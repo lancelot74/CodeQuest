@@ -41,6 +41,10 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('mage-walk', 'assets/game/enemies/mage/walk.png', MAGE)
     this.load.spritesheet('mage-death', 'assets/game/enemies/mage/death.png', MAGE)
 
+    // Eyeball hunter (Brysia pack): 20px hover strip + its 7px bullet.
+    this.load.spritesheet('eyeball-walk', 'assets/game/enemies/eyeball/walk.png', { frameWidth: 20, frameHeight: 20 })
+    this.load.image('eye-bullet', 'assets/game/enemies/eyeball/bullet.png')
+
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
     const HUNT = 'assets/game/hunt'
@@ -86,6 +90,7 @@ export default class PreloadScene extends Phaser.Scene {
     mus('bgm-tension', 'dark-forest.ogg')
     mus('cue-exit', 'somethings-wrong-in.ogg')
     mus('cue-chest', 'fredelig-out.ogg')
+    mus('bgm-trap', 'insanity.ogg') // loops while the hero is stuck in a hole
 
     this.load.json('worlds', 'data/worlds.json')
     this.load.json('lessons', 'data/lessons.json')

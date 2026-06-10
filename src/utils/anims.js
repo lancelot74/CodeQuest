@@ -21,6 +21,7 @@ export function createEnemyAnimations(scene) {
   define(scene, 'demon-death', 'demon-death', 9, 0)
   define(scene, 'mage-walk', 'mage-walk', 9, -1)
   define(scene, 'mage-death', 'mage-death', 10, 0)
+  define(scene, 'eyeball-walk', 'eyeball-walk', 6, -1)
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {
