@@ -28,7 +28,7 @@ export const CombatSystem = {
     return t
   },
 
-  puff(scene, x, y, tint = 0xffffff) {
+  puff(scene, x, y, tint = 0xffffff, depth = 30) {
     const emitter = scene.add.particles(x, y, 'spark', {
       speed: { min: 50, max: 130 },
       angle: { min: 0, max: 360 },
@@ -38,7 +38,7 @@ export const CombatSystem = {
       tint,
       emitting: false,
     })
-    emitter.setDepth(30)
+    emitter.setDepth(depth)
     emitter.explode(10)
     scene.time.delayedCall(420, () => emitter.destroy())
   },

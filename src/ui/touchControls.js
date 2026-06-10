@@ -198,7 +198,7 @@ function mount() {
 }
 
 // labels lets a scene relabel the three action buttons (they still drive the same
-// TouchState flags) — e.g. NIGHT HUNT shows RUN / USE / LURE instead of JUMP/ATK/HVY.
+// TouchState flags) — e.g. NIGHT HUNT shows RUN / USE and hides the third button.
 export function showTouchControls(labels) {
   if (!isTouchDevice()) return
   mount()

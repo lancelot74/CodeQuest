@@ -1,8 +1,9 @@
 import Phaser from 'phaser'
+import { Audio, SFX } from './AudioSystem.js'
 
-// The stalker. One per round; its active SENSE and boss SKIN are randomized each
-// round. Stealth is the whole game: while it can't sense you it patrols, and only
-// once its awareness meter fills does it CHASE and fire the skin's signature attack.
+// The stalker. Rounds spawn 1-3 of them, each with its own SENSE and boss SKIN.
+// Stealth is the whole game: while one can't sense you it patrols, and only once
+// its awareness meter fills does it CHASE and fire the skin's signature attack.
 export const SENSES = {
   sight: { key: 'sight', code: 'cobb.sight', color: 0xffd24a, glyph: 'eye' },
   hearing: { key: 'hearing', code: 'cobb.hearing', color: 0x53d2ff, glyph: 'ear' },
@@ -67,6 +68,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.lingerTimer = 0
     this.investigateTimer = 0
     this._wasSensing = false
+    this._stepT = 0
 
     // sits in the world depth band (below the fog) so darkness hides it like the
     // hunter sprite — you only see the awareness ring when the hunter is actually lit
@@ -165,7 +167,23 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.setDepth(this.y)
+    this.updateSteps(dt)
     this.drawMeter()
+  }
+
+  // Audible footsteps so an unseen stalker can be tracked by ear: cadence follows its
+  // actual speed, volume falls off with distance to the hero, and the pitch sits well
+  // below the player's own steps so the two never blur together.
+  updateSteps(dt) {
+    const v = this.body.velocity.length()
+    if (v < 20) return
+    this._stepT -= dt
+    if (this._stepT > 0) return
+    this._stepT = Phaser.Math.Clamp(34 / v, 0.24, 0.7)
+    const d = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y)
+    const vol = 1 - d / 300
+    if (vol <= 0.05) return
+    Audio.play(this.scene, SFX.jump, { volume: vol * 0.65, rate: 0.62, detune: -250 })
   }
 
   // Mode transitions. A CHASE breaks once contact is lost for GIVE_UP seconds (or
@@ -181,6 +199,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       this.stunTimer -= dt
       if (this.stunTimer <= 0) {
         this.mode = 'PATROL'
+        this.clearTint()
         this.patrol = this.scene.randomPatrolPoint(this.x, this.y, 200)
       }
       return
@@ -195,6 +214,8 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
         this.awareness = 0
         this.rageCooldown = RAGE_COOLDOWN
         this.body.setVelocity(0, 0)
+        this.setTint(0x55607a) // winded — visibly drained until it recovers
+        this.scene.flashBanner('cobb.rage = false', '#7ab8ff')
       } else if (lostContact) {
         this.mode = 'CALM'
         this.calmTimer = CALM_TIME
@@ -218,6 +239,9 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
   enrage() {
     this.mode = 'CHASE'
     this.chaseTimer = RAGE_TIME
+    // telegraph the snap in the game's code-speak so the player knows the rules changed
+    this.scene.flashBanner('cobb.rage = true', '#ff3b3b')
+    Audio.play(this.scene, SFX.crit, { volume: 0.7, rate: 0.8 })
   }
 
   // A thrown lure yanks attention to a point. Breaks a chase lock down into an
@@ -265,7 +289,8 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.attackTimer = ATTACK_CD * (this.scene.atkCdMul || 1) // boss.attackSpeed++ shortens this
     this.setTint(0xffffff)
     this.scene.time.delayedCall(WINDUP * 1000, () => {
-      if (!this.active) return
+      // burned out or the round ended mid-windup: keep the stun tint, swallow the shot
+      if (!this.active || this.mode === 'STUNNED' || this.scene.gameOver) return
       this.clearTint()
       this.scene.spawnHunterAttack(this)
     })

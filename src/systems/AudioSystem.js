@@ -41,7 +41,7 @@ export const Audio = {
   play(scene, key, opts = {}) {
     const s = SaveSystem.data.settings || {}
     if (s.muted) return
-    const vol = (s.sfxVol ?? 0.8) * (GAIN[key] ?? 0.6) * (opts.volume ?? 1)
+    const vol = (s.sfxVol ?? 0.45) * (GAIN[key] ?? 0.6) * (opts.volume ?? 1)
     if (vol <= 0) return
     if (!scene.cache.audio.exists(key)) return
     scene.sound.play(key, { volume: vol, rate: opts.rate ?? 1, detune: opts.detune ?? 0 })
@@ -54,24 +54,34 @@ export const Audio = {
 // current loop survives scene transitions — each scene just declares what it wants.
 let curKey = null
 let curSound = null
+let curCue = null // persistent overlay cue (endgame layer) — independent of the loop
 
 function musVol(scale = 1) {
   const s = SaveSystem.data.settings || {}
   if (s.muted) return 0
-  return (s.musicVol ?? 0.6) * scale
+  return (s.musicVol ?? 0.85) * scale
 }
 
-// Tween a Phaser sound's volume; optionally stop it once silent. Guard the target so a
-// sound destroyed mid-tween doesn't throw.
+// Tween a Phaser sound's volume; optionally destroy it once silent (destroy, not stop,
+// so retired loops don't pile up in the global sound manager). Fade tweens live on the
+// calling scene, so if that scene shuts down mid-fade the tween dies with it — the
+// once-SHUTDOWN finalizer snaps the sound to its destination instead, otherwise an
+// outgoing loop would keep playing at mid-fade volume forever.
 function fade(scene, sound, to, ms, { stopAtEnd = false, ease } = {}) {
   if (!sound) return
+  const finalize = () => {
+    if (stopAtEnd) sound.destroy()
+    else sound.setVolume(to)
+  }
+  scene.events.once('shutdown', finalize)
   scene.tweens.add({
     targets: sound,
     volume: to,
     duration: ms,
     ease,
     onComplete: () => {
-      if (stopAtEnd && sound) sound.stop()
+      scene.events.off('shutdown', finalize)
+      if (stopAtEnd) sound.destroy()
     },
   })
 }
@@ -95,14 +105,23 @@ export const Music = {
   },
 
   // One-shot cue over the current loop: duck the loop, play the cue, restore on end.
+  // The un-duck rides the cue's 'complete' event (global sound manager), which can fire
+  // after the calling scene is gone — the once-SHUTDOWN hook restores instantly in that
+  // case so the loop doesn't sit ducked forever.
   stinger(scene, key, { duck = 0.35, fade: ms = 400 } = {}) {
     if (!scene.cache.audio.exists(key)) return
     const cue = scene.sound.add(key, { volume: musVol() })
+    const cutShort = () => {
+      cue.destroy() // also drops the pending 'complete' handler
+      if (curSound) curSound.setVolume(musVol())
+    }
     if (curSound) fade(scene, curSound, musVol(duck), ms)
     cue.once('complete', () => {
+      scene.events.off('shutdown', cutShort)
       if (curSound) fade(scene, curSound, musVol(), ms)
       cue.destroy()
     })
+    scene.events.once('shutdown', cutShort)
     cue.play()
   },
 
@@ -110,6 +129,29 @@ export const Music = {
     if (curSound) fade(scene, curSound, 0, ms, { stopAtEnd: true })
     curKey = null
     curSound = null
+  },
+
+  // Open-ended looping overlay on TOP of the current loop (the endgame "way out is
+  // open" layer): the main/tension system keeps crossfading underneath it. Runs until
+  // cueStop — or the scene dies, which destroys it via the shutdown hook.
+  cueLoop(scene, key, { volume = 0.8, fade: ms = 600 } = {}) {
+    if (curCue || !scene.cache.audio.exists(key)) return
+    const cue = scene.sound.add(key, { loop: true, volume: 0 })
+    curCue = cue
+    cue.play()
+    fade(scene, cue, musVol(volume), ms)
+    scene.events.once('shutdown', () => {
+      if (curCue === cue) {
+        curCue = null
+        cue.destroy()
+      }
+    })
+  },
+
+  cueStop(scene, { fade: ms = 800 } = {}) {
+    if (!curCue) return
+    fade(scene, curCue, 0, ms, { stopAtEnd: true })
+    curCue = null
   },
 
   // Re-apply the saved music volume to the live loop — lets the settings slider
