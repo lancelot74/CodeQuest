@@ -1,16 +1,17 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
-import { addBackdrop, panelButton, button, pixelText } from '../ui/widgets.js'
+import { addBackdrop, panelButton, button, pixelText, drawSenseIcon } from '../ui/widgets.js'
 import { HERO_CARDS } from './GameSelect.js'
+import { SENSES } from '../systems/Hunter.js'
 
-// One dedicated page per mode, reached from a GAME-hub button. Shows the mode's
-// blurb + the hero it'll play as, then PLAY launches the mode itself.
+// One briefing page per mode, reached from the GAME hub. Hero picking lives HERE
+// (single home): hunt offers the full roster, story only the animated heroes.
 const MODE_INFO = {
   story: {
     title: 'STORY MODE',
     play: 'WorldSelect',
-    hero: true,
+    hero: 'anim',
     blurb: ['Side-scroll platformer — solve code', 'puzzles to clear each level.'],
   },
   war: {
@@ -22,9 +23,16 @@ const MODE_INFO = {
   hunt: {
     title: 'NIGHT HUNT',
     play: 'NightHunt',
-    hero: true,
-    blurb: ['Survive a dark forest: clear 3 objectives', 'and escape while a stalker hunts you.'],
+    hero: 'all',
+    blurb: ['Open the chests and escape the forest', 'while the hunters stalk you.'],
   },
+}
+
+// What beats each sense — shown in the calm of the briefing instead of mid-panic.
+const SENSE_HINTS = {
+  sight: 'stay dark, stay still',
+  hearing: 'walk - sprinting is loud',
+  smell: 'keep moving, trail decays',
 }
 
 export default class ModePageScene extends Phaser.Scene {
@@ -33,29 +41,77 @@ export default class ModePageScene extends Phaser.Scene {
   }
 
   create(data) {
-    const info = MODE_INFO[data?.mode] || MODE_INFO.hunt
+    this.mode = data?.mode || 'hunt'
+    const info = MODE_INFO[this.mode]
     addBackdrop(this, 'bg-blue')
-    pixelText(this, GAME_WIDTH / 2, 56, info.title, 24, '#ffe066')
-    info.blurb.forEach((line, i) => pixelText(this, GAME_WIDTH / 2, 104 + i * 18, line, 8, '#cdd7ee'))
+    pixelText(this, GAME_WIDTH / 2, 40, info.title, 22, '#ffe066')
+    info.blurb.forEach((line, i) => pixelText(this, GAME_WIDTH / 2, 74 + i * 14, line, 8, '#cdd7ee'))
 
-    if (info.hero) this.showHero(info)
+    if (info.hero) this.buildHeroCarousel(info)
+    if (this.mode === 'hunt') {
+      this.buildSenseLegend()
+      const best = SaveSystem.data.hunt.bestRound
+      if (best > 1) pixelText(this, GAME_WIDTH / 2, 276, `save.bestRound = ${best}  — beat it`, 8, '#7ab8ff')
+    }
 
-    panelButton(this, GAME_WIDTH / 2, 258, 'PLAY', () => this.scene.start(info.play), { width: 160 })
+    panelButton(this, GAME_WIDTH / 2, 306, 'PLAY', () => this.scene.start(info.play), { width: 160 })
     button(this, 52, GAME_HEIGHT - 22, '< BACK', () => this.scene.start('GameSelect'), { size: 8 })
   }
 
-  // NIGHT HUNT plays as the registry hero (can be Knight/Golem); STORY uses the saved
-  // campaign character, which is always one of the animated platformer heroes.
-  showHero(info) {
-    const wanted = info.play === 'NightHunt' ? this.registry.get('huntHero') || SaveSystem.data.character : SaveSystem.data.character
-    const h = HERO_CARDS.find((c) => c.key === wanted) || HERO_CARDS[0]
-    const x = GAME_WIDTH / 2
-    const y = 190
+  // Arrow carousel over the roster. Picks persist exactly like the old hub picker:
+  // every pick sets the NIGHT HUNT hero; animated picks also become the campaign hero.
+  buildHeroCarousel(info) {
+    this.roster = info.hero === 'all' ? HERO_CARDS : HERO_CARDS.filter((h) => h.anim)
+    const wanted = this.registry.get('huntHero') || SaveSystem.data.character
+    this.idx = Math.max(0, this.roster.findIndex((h) => h.key === wanted))
+
+    // hunt shares the row with the sense legend; story gets the full width
+    this.heroX = this.mode === 'hunt' ? GAME_WIDTH / 2 - 150 : GAME_WIDTH / 2
+    this.heroY = 178
+    this.heroSpr = null
+    this.heroName = pixelText(this, this.heroX, this.heroY + 44, '', 8, '#ffe066')
+    pixelText(this, this.heroX, this.heroY + 60, 'your hero', 7, '#6f7db0')
+    button(this, this.heroX - 64, this.heroY, '<', () => this.cycle(-1), { size: 12 })
+    button(this, this.heroX + 64, this.heroY, '>', () => this.cycle(1), { size: 12 })
+    this.showHero()
+  }
+
+  cycle(dir) {
+    this.idx = (this.idx + dir + this.roster.length) % this.roster.length
+    this.showHero()
+    const h = this.roster[this.idx]
+    this.registry.set('huntHero', h.key)
     if (h.anim) {
-      this.add.sprite(x, y, `${h.key}-idle`).setScale(2).play(`${h.key}-idle`)
-    } else {
-      this.add.image(x, y, h.key).setScale((h.scale || 1.3) * 1.6)
+      SaveSystem.setCharacter(h.key)
+      this.registry.set('character', h.key)
     }
-    pixelText(this, x, y + 32, `HERO  ${h.label}`, 7, '#9fb0d6')
+  }
+
+  showHero() {
+    const h = this.roster[this.idx]
+    if (this.heroSpr) this.heroSpr.destroy()
+    if (h.anim) {
+      this.heroSpr = this.add.sprite(this.heroX, this.heroY, `${h.key}-idle`).setScale(2.2)
+      this.heroSpr.play(`${h.key}-idle`)
+    } else {
+      this.heroSpr = this.add.image(this.heroX, this.heroY, h.key).setScale((h.scale || 1.3) * 1.5)
+    }
+    const tag = h.anim ? '' : '  (hunt only)'
+    this.heroName.setText(h.label + tag)
+  }
+
+  // The three senses in their native code-speak, each with its counterplay — the
+  // lesson kids otherwise have to absorb from a 3-second banner mid-chase.
+  buildSenseLegend() {
+    const x = GAME_WIDTH / 2 - 40
+    pixelText(this, x + 110, 132, 'THE HUNTERS USE', 7, '#8ea0c0')
+    const g = this.add.graphics()
+    Object.values(SENSES).forEach((sn, i) => {
+      const y = 156 + i * 30
+      drawSenseIcon(g, x, y, sn.glyph, sn.color)
+      const col = '#' + sn.color.toString(16).padStart(6, '0')
+      pixelText(this, x + 16, y - 6, `${sn.code} = true`, 8, col).setOrigin(0, 0.5)
+      pixelText(this, x + 16, y + 7, SENSE_HINTS[sn.key], 7, '#8ea0c0').setOrigin(0, 0.5)
+    })
   }
 }

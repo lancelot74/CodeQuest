@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
-import { pixelText, panelButton, uiPanel } from '../ui/widgets.js'
+import { pixelText, panelButton, uiPanel, drawSenseIcon } from '../ui/widgets.js'
 import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
@@ -90,6 +90,56 @@ const HERO_DEBUFFS = [
   { label: 'hero.freeze++', apply: (s) => (s.freezeOn = true) },
 ]
 
+// Night events: an optional twist per round from round 2 on, announced as a third
+// code object (night.*) beside the boss powers and hero debuffs. ~40% of rounds roll
+// one (guaranteed after two quiet nights); wash/fog recolor the dark itself so the
+// rule stays visible all round, not just during the banner.
+const NIGHT_EVENTS = [
+  {
+    key: 'bloodMoon',
+    label: 'night.bloodMoon = true',
+    hint: 'wary hunters - but fast chests',
+    wash: 0x2a0a18,
+    fog: 0x0a0408,
+    apply: (s) => {
+      s.awareUpMul *= 1.35
+      s.objHoldMul = 0.5
+    },
+  },
+  {
+    key: 'silence',
+    label: 'night.silence = true',
+    hint: 'quiet feet - quiet stones',
+    wash: 0x081226,
+    fog: 0x03050c,
+    apply: (s) => {
+      s.loudMul *= 0.5
+      s.hearRangeMul = 0.6
+      s.coldDrainMul = 1.5
+      s.silenceOn = true
+    },
+  },
+  {
+    key: 'starfall',
+    label: 'night.starfall = true',
+    hint: 'flashes reveal everyone',
+    apply: (s) => (s.starfallOn = true),
+  },
+  {
+    key: 'feast',
+    label: 'night.feast = true',
+    hint: 'extra food - eating is loud',
+    apply: (s) => (s.feastOn = true),
+  },
+  {
+    key: 'hivemind',
+    label: 'night.hivemind = true',
+    hint: 'one rage wakes the pack',
+    need: (s) => s.hunterCount >= 2,
+    apply: (s) => (s.hivemindOn = true),
+  },
+]
+
 // NIGHT HUNT — a top-down survival-horror roguelite (Cobb Can Move-style). Roam a
 // dark forest opening chests and reach the exit while 1-3 stalkers hunt you; each
 // round's modifier budget rolls the pack size, senses + boss skins. See Hunter.js.
@@ -140,6 +190,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.exits = []
     this.hunters = []
     this.bannerEls = []
+    this._dryRounds = 0
+    this.flashes = []
     this.resetModifiers()
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
@@ -178,8 +230,9 @@ export default class NightHuntScene extends Phaser.Scene {
       }
     }
     floor.endDraw()
-    // night wash — dims the grass so the flashlight reads (robust vs. tint support)
-    this.add.rectangle(0, 0, WORLD_W, WORLD_H, 0x0a1430, 0.5).setOrigin(0, 0).setDepth(1)
+    // night wash — dims the grass so the flashlight reads (robust vs. tint support);
+    // kept on the scene so night events can recolor the dark itself per round
+    this.nightWash = this.add.rectangle(0, 0, WORLD_W, WORLD_H, 0x0a1430, 0.5).setOrigin(0, 0).setDepth(1)
 
     this.wallZones = []
     this.wallRects = []
@@ -364,7 +417,7 @@ export default class NightHuntScene extends Phaser.Scene {
       this.warmth = Math.min(WARM_MAX, this.warmth + WARM_REGEN * dt)
       this.player.clearTint()
     } else {
-      this.warmth = Math.max(0, this.warmth - COLD_DRAIN * dt)
+      this.warmth = Math.max(0, this.warmth - COLD_DRAIN * this.coldDrainMul * dt)
       if (this.warmth < 0.45) this.player.setTint(0x9ad0ff)
       if (this.warmth <= 0) {
         this.frozen = true
@@ -390,6 +443,9 @@ export default class NightHuntScene extends Phaser.Scene {
     for (const tr of this.torches) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, tr.x, tr.y) < TORCH_LIGHT) return true
     }
+    for (const f of this.flashes) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, f.x, f.y) < TORCH_LIGHT) return true
+    }
     return false
   }
 
@@ -413,7 +469,13 @@ export default class NightHuntScene extends Phaser.Scene {
         f.gfx.destroy()
         this.hunger = Math.min(HUNGER_MAX, this.hunger + FOOD_REFILL)
         CombatSystem.puff(this, f.x, f.y - 4, 0xe0584a)
-        Audio.play(this, SFX.click, { volume: 0.5 })
+        if (this.feastOn) {
+          // night.feast: gorging is LOUD — every apple near a hearing hunter is a bet
+          this._burst = Math.max(this._burst, 1.0)
+          Audio.play(this, SFX.heavy, { volume: 0.6, rate: 0.8 })
+        } else {
+          Audio.play(this, SFX.click, { volume: 0.5 })
+        }
         return
       }
     }
@@ -480,7 +542,10 @@ export default class NightHuntScene extends Phaser.Scene {
         Audio.play(this, SFX.hit, { volume: 0.5 })
         CombatSystem.puff(this, tx, ty, 0xb6c2d8)
         this.scent.push({ x: tx, y: ty, str: 1.1 })
-        this.hunters.forEach((h) => h.distract(tx, ty))
+        // on a silent night the clatter doesn't carry — only nearby hunters take the bait
+        this.hunters.forEach((h) => {
+          if (!this.silenceOn || Phaser.Math.Distance.Between(h.x, h.y, tx, ty) < 240) h.distract(tx, ty)
+        })
       },
     })
     this.updateInventoryHud()
@@ -559,6 +624,14 @@ export default class NightHuntScene extends Phaser.Scene {
     this.senseRangeMul = 1
     this.awareUpMul = 1
     this.freezeOn = false
+    this.objHoldMul = 1
+    this.hearRangeMul = 1
+    this.coldDrainMul = 1
+    this.silenceOn = false
+    this.starfallOn = false
+    this.feastOn = false
+    this.hivemindOn = false
+    this.nightEvent = null
     this.activePowers = []
     this.activeDebuffs = []
   }
@@ -603,6 +676,17 @@ export default class NightHuntScene extends Phaser.Scene {
     this.activeDebuffs = debuffs
     for (const m of powers) m.apply(this)
     for (const m of debuffs) m.apply(this)
+
+    // night event: round 2+ (round 1 stays a clean tutorial), ~40% — with a pity
+    // rule so the variety engine never sleeps more than two rounds straight
+    if (this.round >= 2 && (this._dryRounds >= 2 || Math.random() < 0.4)) {
+      const pool = NIGHT_EVENTS.filter((e) => !e.need || e.need(this))
+      this.nightEvent = Phaser.Utils.Array.GetRandom(pool)
+      this.nightEvent.apply(this)
+      this._dryRounds = 0
+    } else {
+      this._dryRounds++
+    }
   }
 
   // ---- round flow -----------------------------------------------------------
@@ -620,6 +704,12 @@ export default class NightHuntScene extends Phaser.Scene {
     const n = this.hunterCount
     this.activeSenses = Phaser.Utils.Array.Shuffle(Object.keys(SENSES)).slice(0, n)
     this.activeSkins = Phaser.Utils.Array.Shuffle(Object.keys(SKINS)).slice(0, n)
+
+    // the night itself carries the event: tinted wash + fog, fresh starfall state
+    this.nightWash.setFillStyle(this.nightEvent?.wash ?? 0x0a1430, 0.5)
+    this.fogColor = this.nightEvent?.fog ?? 0x05060a
+    this.flashes = []
+    this._starT = Phaser.Math.FloatBetween(4, 7)
 
     // chests grow from round 2 on; exits from round 3 on (round-1 of them)
     this.chestCount = 3 + Math.max(0, this.round - 1)
@@ -734,7 +824,7 @@ export default class NightHuntScene extends Phaser.Scene {
 
   // Food: walk over to refill the hunger bar. Scattered fresh each round.
   placeFood() {
-    for (const pt of this.spreadPoints(NUM_FOOD, 100, 120)) {
+    for (const pt of this.spreadPoints(NUM_FOOD * (this.feastOn ? 2 : 1), 100, 120)) {
       const gfx = this.add.container(pt.x, pt.y).setDepth(pt.y)
       const apple = this.add.ellipse(0, -5, 11, 12, 0xe0584a)
       const leaf = this.add.ellipse(3, -11, 6, 4, 0x6fcf5a).setAngle(-30)
@@ -888,7 +978,7 @@ export default class NightHuntScene extends Phaser.Scene {
         const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, o.x, o.y)
         if (d < OBJ_RADIUS && this.interacting && !this.frozen) {
           channeling = true
-          o.progress = Math.min(1, o.progress + dt / OBJ_HOLD)
+          o.progress = Math.min(1, o.progress + dt / (OBJ_HOLD * this.objHoldMul))
           this._burst = Math.max(this._burst, 0.5) // channeling is audible
           this.chestAlarm(o, dt)
           if (o.progress >= 1) {
@@ -1107,6 +1197,40 @@ export default class NightHuntScene extends Phaser.Scene {
     this.projectiles = []
   }
 
+  // night.starfall: every so often a streak falls (0.7s telegraph — sprint clear, or
+  // stand and watch) and bursts into a brief pool of light. Scouting tool and exposure
+  // hazard in one: it reveals a lurking hunter, but counts as lit for sight hunters.
+  // Driven from update(), so it pauses cleanly on gameOver.
+  updateStarfall(dt) {
+    for (const f of this.flashes) f.t -= dt
+    this.flashes = this.flashes.filter((f) => f.t > 0)
+    if (!this.starfallOn) return
+    this._starT -= dt
+    if (this._starT > 0) return
+    this._starT = Phaser.Math.FloatBetween(7, 10)
+    // bias toward the action: prefer points inside the camera view so each flash is
+    // a visible event, not off-screen noise
+    const view = this.cameras.main.worldView
+    const near = this.openPoints.filter((p) => view.contains(p.x, p.y))
+    const pt = Phaser.Utils.Array.GetRandom(near.length ? near : this.openPoints)
+    const streak = this.add.image(pt.x, pt.y - 170, 'venom').setDepth(950).setScale(0.8, 1.6).setTint(0xfff2b0)
+    const inRound = this.round
+    Audio.play(this, SFX.spit, { volume: 0.35, rate: 1.5 })
+    this.tweens.add({
+      targets: streak,
+      y: pt.y,
+      duration: 700,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        streak.destroy()
+        if (this.gameOver || this.round !== inRound) return
+        this.flashes.push({ x: pt.x, y: pt.y, t: 1.1 })
+        CombatSystem.puff(this, pt.x, pt.y, 0xfff2b0, 950)
+        Audio.play(this, SFX.crit, { volume: 0.3, rate: 1.3 })
+      },
+    })
+  }
+
   // ---- darkness -------------------------------------------------------------
   makeLights() {
     this.makeLight('hunt-light', LIGHT_RADIUS, 1)
@@ -1138,10 +1262,13 @@ export default class NightHuntScene extends Phaser.Scene {
   updateFog() {
     const cam = this.cameras.main
     this.fog.clear()
-    this.fog.fill(0x05060a, 1) // pitch black outside the lights
-    // ambient torch pools first
+    this.fog.fill(this.fogColor, 1) // pitch black outside the lights (event-tinted)
+    // ambient torch pools first, then any live starfall flashes
     for (const tr of this.torches) {
       this.fog.erase('hunt-torch-light', tr.x - cam.scrollX - TORCH_LIGHT, tr.y - cam.scrollY - TORCH_LIGHT)
+    }
+    for (const f of this.flashes) {
+      this.fog.erase('hunt-torch-light', f.x - cam.scrollX - TORCH_LIGHT, f.y - cam.scrollY - TORCH_LIGHT)
     }
     // player light: tiny without a torch, wide once one is picked up
     const pr = this.hasTorch ? LIGHT_RADIUS : SMALL_LIGHT
@@ -1290,25 +1417,10 @@ export default class NightHuntScene extends Phaser.Scene {
     const codes = []
     this.activeSenses.forEach((key, i) => {
       const sn = SENSES[key]
-      this.drawSenseIcon(this.senseIcon, GAME_WIDTH - 22 - i * 24, 16, sn.glyph, sn.color)
+      drawSenseIcon(this.senseIcon, GAME_WIDTH - 22 - i * 24, 16, sn.glyph, sn.color)
       codes.push(sn.key)
     })
     this.senseText.setText(codes.join(' + '))
-  }
-
-  drawSenseIcon(g, x, y, glyph, color) {
-    g.lineStyle(2, color, 1).fillStyle(color, 1)
-    if (glyph === 'eye') {
-      g.strokeCircle(x, y, 7)
-      g.fillCircle(x, y, 3)
-    } else if (glyph === 'ear') {
-      g.beginPath()
-      g.arc(x + 1, y, 7, Phaser.Math.DegToRad(-70), Phaser.Math.DegToRad(150), false)
-      g.strokePath()
-      g.fillCircle(x - 1, y + 3, 2)
-    } else {
-      g.fillTriangle(x - 6, y + 5, x + 6, y + 5, x, y - 6)
-    }
   }
 
   // ---- banners + overlays ---------------------------------------------------
@@ -1318,6 +1430,10 @@ export default class NightHuntScene extends Phaser.Scene {
       ...this.activePowers.map((m) => ({ text: m.label, color: '#ff7a6b' })),
       ...this.activeDebuffs.map((m) => ({ text: m.label, color: '#7ab8ff' })),
     ]
+    if (this.nightEvent) {
+      mods.push({ text: this.nightEvent.label, color: '#ffa64a' })
+      mods.push({ text: this.nightEvent.hint, color: '#8ea0c0' })
+    }
     const rows = this.activeSenses.length + (mods.length ? mods.length + 1 : 0)
     const h = 46 + rows * 16
     const top = 58
@@ -1330,7 +1446,7 @@ export default class NightHuntScene extends Phaser.Scene {
       const sn = SENSES[key]
       const col = '#' + sn.color.toString(16).padStart(6, '0')
       const icon = this.add.graphics().setScrollFactor(0).setDepth(11001)
-      this.drawSenseIcon(icon, GAME_WIDTH / 2 - 130, yy, sn.glyph, sn.color)
+      drawSenseIcon(icon, GAME_WIDTH / 2 - 130, yy, sn.glyph, sn.color)
       const code = pixelText(this, GAME_WIDTH / 2 - 110, yy, `${sn.code} = true`, 11, col).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11001)
       this.bannerEls.push(icon, code)
       yy += 16
@@ -1434,6 +1550,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.updateTrapHud()
     for (const h of this.hunters) h.think(dt)
     this.updateRageHud()
+    this.updateStarfall(dt)
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()
@@ -1465,7 +1582,8 @@ export default class NightHuntScene extends Phaser.Scene {
       }
       if (
         view.contains(h.x, h.y) &&
-        this.torches.some((tr) => Phaser.Math.Distance.Between(h.x, h.y, tr.x, tr.y) < TORCH_LIGHT + h.displayWidth * 0.5)
+        (this.torches.some((tr) => Phaser.Math.Distance.Between(h.x, h.y, tr.x, tr.y) < TORCH_LIGHT + h.displayWidth * 0.5) ||
+          this.flashes.some((f) => Phaser.Math.Distance.Between(h.x, h.y, f.x, f.y) < TORCH_LIGHT + h.displayWidth * 0.5))
       ) {
         seen = true
         break

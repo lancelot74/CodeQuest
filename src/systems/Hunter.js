@@ -87,9 +87,10 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
       return { sig: near * (s.playerMoving ? 1 : 0.45), x: p.x, y: p.y }
     }
     if (this.senseKey === 'hearing') {
-      if (d > HEAR_RANGE * sr) return { sig: 0 }
+      const hr = HEAR_RANGE * sr * (s.hearRangeMul || 1) // night.silence dulls hearing only
+      if (d > hr) return { sig: 0 }
       const loud = s.playerLoudness // 0..~1.3
-      const sig = loud * (1 - d / (HEAR_RANGE * sr))
+      const sig = loud * (1 - d / hr)
       return sig > 0.02 ? { sig, x: p.x, y: p.y } : { sig: 0 }
     }
     // smell — follows a decaying scent trail; ignores walls and silence, beaten by distance
@@ -242,6 +243,13 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     // telegraph the snap in the game's code-speak so the player knows the rules changed
     this.scene.flashBanner('cobb.rage = true', '#ff3b3b')
     Audio.play(this.scene, SFX.crit, { volume: 0.7, rate: 0.8 })
+    // night.hivemind: one rage wakes the pack — the others converge on your position
+    if (this.scene.hivemindOn) {
+      const p = this.scene.player
+      for (const o of this.scene.hunters) {
+        if (o !== this && o.mode !== 'CHASE') o.distract(p.x, p.y)
+      }
+    }
   }
 
   // A thrown lure yanks attention to a point. Breaks a chase lock down into an

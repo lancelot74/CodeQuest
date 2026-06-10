@@ -1,12 +1,11 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
-import { SaveSystem } from '../systems/SaveSystem.js'
-import { addBackdrop, panelButton, button, pixelText } from '../ui/widgets.js'
+import { addBackdrop, button, pixelText, uiPanel, drawSenseIcon, ensureGlowTexture } from '../ui/widgets.js'
+import { SENSES } from '../systems/Hunter.js'
 
-// Hero roster mirrors NightHunt's HEROES. The four animated platformer heroes work
-// in every mode; Knight and Golem are single-frame hunt-pack skins usable only in
-// NIGHT HUNT (the platformer needs animated sheets) — picking one sets the Night
-// Hunt hero but leaves the campaign hero on the last animated pick.
+// Hero roster shared with the mode briefing pages. The four animated platformer
+// heroes work in every mode; Knight and Golem are single-frame hunt-pack skins
+// usable only in NIGHT HUNT (the platformer needs animated sheets).
 export const HERO_CARDS = [
   { key: 'ninja', label: 'FROG', anim: true },
   { key: 'pink', label: 'PINK', anim: true },
@@ -16,8 +15,9 @@ export const HERO_CARDS = [
   { key: 'hunt-golem', label: 'GOLEM', anim: false, scale: 1.5 },
 ]
 
-// The "Game" hub: pick a default hero up top, then choose a mode from the buttons
-// below — each launches straight into its own mode screen.
+// The "Game" hub: NIGHT HUNT is the flagship card up top (animated, teaches the
+// three senses before you ever play); STORY and AGE OF WAR sit below as smaller
+// cards. Hero picking lives on each mode's briefing page now.
 export default class GameSelectScene extends Phaser.Scene {
   constructor() {
     super('GameSelect')
@@ -25,67 +25,73 @@ export default class GameSelectScene extends Phaser.Scene {
 
   create() {
     addBackdrop(this, 'bg-blue')
-    pixelText(this, GAME_WIDTH / 2, 26, 'GAME', 22, '#ffe066')
-    pixelText(this, GAME_WIDTH / 2, 50, 'pick your hero, then choose a mode', 8, '#8ea0c0')
+    ensureGlowTexture(this)
+    pixelText(this, GAME_WIDTH / 2, 28, 'CHOOSE A GAME', 18, '#ffe066')
 
-    const wanted = this.registry.get('huntHero') || SaveSystem.data.character
-    this.selected = HERO_CARDS.some((h) => h.key === wanted) ? wanted : 'ninja'
-    this.cards = {}
-
-    const gap = 94
-    const x0 = GAME_WIDTH / 2 - gap * 2.5
-    const y = 112
-    HERO_CARDS.forEach((h, i) => {
-      const x = x0 + i * gap
-      const frame = this.add.rectangle(x, y, 72, 80, 0x1b2138, 0.8).setStrokeStyle(2, 0x3a4568)
-      const base = h.anim ? 2 : h.scale || 1.3
-      let spr
-      if (h.anim) {
-        spr = this.add.sprite(x, y - 4, `${h.key}-idle`).setScale(base)
-        spr.play(`${h.key}-idle`)
-      } else {
-        spr = this.add.image(x, y - 4, h.key).setScale(base)
-      }
-      const name = pixelText(this, x, y + 50, h.label, 7, '#cdd7ee')
-      const hit = this.add.rectangle(x, y, 78, 104, 0xffffff, 0).setInteractive({ useHandCursor: true })
-      hit.on('pointerover', () => {
-        if (this.selected !== h.key) frame.setStrokeStyle(2, 0x6f7db0)
-      })
-      hit.on('pointerout', () => this.refresh())
-      hit.on('pointerup', () => this.pick(h))
-      this.cards[h.key] = { frame, spr, name, base }
-    })
-    this.refresh()
-
-    pixelText(this, GAME_WIDTH / 2, 180, 'Knight & Golem are Night Hunt only', 7, '#6f7db0')
-
-    const W = 184
-    panelButton(this, GAME_WIDTH / 2, 214, 'STORY MODE', () => this.scene.start('ModePage', { mode: 'story' }), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 252, 'AGE OF WAR', () => this.scene.start('ModePage', { mode: 'war' }), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 290, 'NIGHT HUNT', () => this.scene.start('ModePage', { mode: 'hunt' }), { width: W })
+    this.buildHuntCard()
+    this.buildSmallCard(GAME_WIDTH / 2 - 102, 'STORY MODE', ['code puzzles,', 'platforming'], 'story')
+    this.buildSmallCard(GAME_WIDTH / 2 + 102, 'AGE OF WAR', ['lane battles,', 'code prompts'], 'war')
 
     button(this, 52, GAME_HEIGHT - 22, '< BACK', () => this.scene.start('MainMenu'), { size: 8 })
   }
 
-  // Pick sets the default hero everywhere it's supported. Animated heroes also
-  // become the campaign hero; static skins only apply to NIGHT HUNT.
-  pick(h) {
-    this.selected = h.key
-    this.registry.set('huntHero', h.key)
-    if (h.anim) {
-      SaveSystem.setCharacter(h.key)
-      this.registry.set('character', h.key)
-    }
-    this.refresh()
+  // Featured card: dark panel, flickering torch, a lurking silhouette, and the three
+  // hunter senses cycling in code-speak so the core rule is met before the first run.
+  buildHuntCard() {
+    const cx = GAME_WIDTH / 2
+    const cy = 124
+    const w = Math.min(400, GAME_WIDTH - 160)
+    const h = 132
+    const bg = uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x8b93b8)
+    this.add.rectangle(cx, cy, w - 8, h - 8, 0x0d1226, 0.92)
+
+    pixelText(this, cx, cy - 44, 'NIGHT HUNT', 16, '#ffe066')
+    pixelText(this, cx, cy - 24, 'survive the dark forest', 7, '#8ea0c0')
+
+    // vignette row: torch pool + a hunter shape lurking at the card's edge
+    const tx = cx - w / 2 + 46
+    const glow = this.add.image(tx, cy + 24, 'menu-glow').setScale(0.7, 0.45).setAlpha(0.3).setTint(0xffb24a)
+    const flame = this.add.ellipse(tx, cy + 18, 6, 11, 0xffd86b, 1)
+    this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.78, yoyo: true, repeat: -1, duration: 300, ease: 'Sine.easeInOut' })
+    const lurker = this.add.sprite(cx + w / 2 - 48, cy + 18, 'demon-walk').setScale(0.55).setTint(0x161c30)
+    lurker.play('demon-walk')
+
+    // cycling sense line: glyph + its code, one sense at a time
+    this.senseG = this.add.graphics()
+    this.senseLine = pixelText(this, cx + 12, cy + 18, '', 9, '#cdd7ee').setOrigin(0, 0.5)
+    this.senseKeys = Object.keys(SENSES)
+    this.senseIdx = 0
+    this.showSense()
+    this.time.addEvent({ delay: 2200, loop: true, callback: () => this.showSense() })
+
+    const hit = this.add.rectangle(cx, cy, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true })
+    hit.on('pointerover', () => bg.setTint(0xe2ecff))
+    hit.on('pointerout', () => bg.setTint(0x8b93b8))
+    hit.on('pointerup', () => this.scene.start('ModePage', { mode: 'hunt' }))
   }
 
-  refresh() {
-    for (const h of HERO_CARDS) {
-      const on = h.key === this.selected
-      const c = this.cards[h.key]
-      c.frame.setStrokeStyle(2, on ? 0xffe066 : 0x3a4568).setFillStyle(0x1b2138, on ? 0.95 : 0.7)
-      c.name.setColor(on ? '#ffe066' : '#cdd7ee')
-      c.spr.setScale(on ? c.base * 1.2 : c.base)
-    }
+  showSense() {
+    const sn = SENSES[this.senseKeys[this.senseIdx]]
+    this.senseIdx = (this.senseIdx + 1) % this.senseKeys.length
+    this.senseG.clear()
+    drawSenseIcon(this.senseG, this.senseLine.x - 16, this.senseLine.y, sn.glyph, sn.color)
+    this.senseLine.setText(`${sn.code} = true`).setColor('#' + sn.color.toString(16).padStart(6, '0'))
+    this.senseG.setAlpha(0)
+    this.senseLine.setAlpha(0)
+    this.tweens.add({ targets: [this.senseG, this.senseLine], alpha: 1, duration: 350 })
+  }
+
+  buildSmallCard(cx, title, blurb, mode) {
+    const cy = 254
+    const w = 188
+    const h = 86
+    const bg = uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x8b93b8)
+    this.add.rectangle(cx, cy, w - 8, h - 8, 0x141a30, 0.9)
+    pixelText(this, cx, cy - 24, title, 10, '#eaf1ff')
+    blurb.forEach((line, i) => pixelText(this, cx, cy + i * 13, line, 7, '#8ea0c0'))
+    const hit = this.add.rectangle(cx, cy, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true })
+    hit.on('pointerover', () => bg.setTint(0xe2ecff))
+    hit.on('pointerout', () => bg.setTint(0x8b93b8))
+    hit.on('pointerup', () => this.scene.start('ModePage', { mode }))
   }
 }

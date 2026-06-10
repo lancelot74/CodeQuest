@@ -1,3 +1,4 @@
+import Phaser from 'phaser'
 import { COLORS } from '../utils/constants.js'
 import { Audio, SFX } from '../systems/AudioSystem.js'
 
@@ -61,6 +62,38 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
     onClick?.()
   })
   return { bg, text: t }
+}
+
+// Soft radial gradient used by the menu screens for moon halos, torch pools and fog
+// wisps. Created once per game; safe to call from any scene before use.
+export function ensureGlowTexture(scene) {
+  if (scene.textures.exists('menu-glow')) return
+  const r = 64
+  const c = scene.textures.createCanvas('menu-glow', r * 2, r * 2)
+  const ctx = c.getContext()
+  const g = ctx.createRadialGradient(r, r, r * 0.1, r, r, r)
+  g.addColorStop(0, 'rgba(255,255,255,0.9)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, r * 2, r * 2)
+  c.refresh()
+}
+
+// Glyph for a hunter sense (eye / ear / nose triangle) drawn into a Graphics object.
+// Shared by the NIGHT HUNT HUD, its rules banner and the menu screens.
+export function drawSenseIcon(g, x, y, glyph, color) {
+  g.lineStyle(2, color, 1).fillStyle(color, 1)
+  if (glyph === 'eye') {
+    g.strokeCircle(x, y, 7)
+    g.fillCircle(x, y, 3)
+  } else if (glyph === 'ear') {
+    g.beginPath()
+    g.arc(x + 1, y, 7, Phaser.Math.DegToRad(-70), Phaser.Math.DegToRad(150), false)
+    g.strokePath()
+    g.fillCircle(x - 1, y + 3, 2)
+  } else {
+    g.fillTriangle(x - 6, y + 5, x + 6, y + 5, x, y - 6)
+  }
 }
 
 // Text on a Kenney panel. Returns the label (callers position by it); the panel
