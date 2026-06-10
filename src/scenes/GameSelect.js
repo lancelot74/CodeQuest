@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
-import { addBackdrop, button, pixelText, uiPanel, drawSenseIcon, ensureGlowTexture } from '../ui/widgets.js'
+import { nightBackdrop, button, pixelText, uiPanel, drawSenseIcon, ensureGlowTexture } from '../ui/widgets.js'
 import { SENSES } from '../systems/Hunter.js'
 
 // Hero roster shared with the mode briefing pages. The four animated platformer
@@ -24,7 +24,7 @@ export default class GameSelectScene extends Phaser.Scene {
   }
 
   create() {
-    addBackdrop(this, 'bg-blue')
+    nightBackdrop(this)
     ensureGlowTexture(this)
     pixelText(this, GAME_WIDTH / 2, 28, 'CHOOSE A GAME', 18, '#ffe066')
 

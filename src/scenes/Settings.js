@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH } from '../config.js'
 import { COLORS } from '../utils/constants.js'
-import { addBackdrop, panelButton, pixelText } from '../ui/widgets.js'
+import { nightBackdrop, panelButton, pixelText } from '../ui/widgets.js'
 import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 
@@ -11,7 +11,7 @@ export default class SettingsScene extends Phaser.Scene {
   }
 
   create() {
-    addBackdrop(this, 'bg-blue')
+    nightBackdrop(this)
     pixelText(this, GAME_WIDTH / 2, 80, 'SETTINGS', 28, COLORS.accent)
 
     // Keep the menu loop audible so the music slider previews against something.

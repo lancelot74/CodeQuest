@@ -64,6 +64,37 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
   return { bg, text: t }
 }
 
+// Procedural night sky shared by the menu screens — vertical gradient, twinkling
+// stars and a distant treeline. Replaces the tiled square backdrops so the whole
+// shell carries NIGHT HUNT's mood. Textures are created once and guarded.
+export function nightBackdrop(scene, { treeline = true } = {}) {
+  const w = scene.scale.width
+  const h = scene.scale.height
+  if (!scene.textures.exists('night-sky')) {
+    const c = scene.textures.createCanvas('night-sky', 8, 256)
+    const ctx = c.getContext()
+    const g = ctx.createLinearGradient(0, 0, 0, 256)
+    g.addColorStop(0, '#16203e')
+    g.addColorStop(0.55, '#0c1226')
+    g.addColorStop(1, '#070a16')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 8, 256)
+    c.refresh()
+  }
+  scene.add.image(0, 0, 'night-sky').setOrigin(0, 0).setDisplaySize(w, h)
+  for (let i = 0; i < 26; i++) {
+    const star = scene.add.circle(Math.random() * w, Math.random() * h * 0.72, Math.random() < 0.25 ? 1.5 : 1, 0xdde6ff, 0.4 + Math.random() * 0.5)
+    if (i % 3 === 0) {
+      scene.tweens.add({ targets: star, alpha: 0.12, yoyo: true, repeat: -1, duration: 900 + Math.random() * 1600, delay: Math.random() * 1200 })
+    }
+  }
+  if (treeline) {
+    for (let x = 10; x < w + 20; x += 34 + Math.random() * 26) {
+      scene.add.image(x, h + 4, 'hunt-tree').setOrigin(0.5, 1).setTint(0x131a30).setScale(0.85 + Math.random() * 0.5)
+    }
+  }
+}
+
 // Soft radial gradient used by the menu screens for moon halos, torch pools and fog
 // wisps. Created once per game; safe to call from any scene before use.
 export function ensureGlowTexture(scene) {

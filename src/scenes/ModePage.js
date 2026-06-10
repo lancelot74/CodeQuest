@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
-import { addBackdrop, panelButton, button, pixelText, drawSenseIcon } from '../ui/widgets.js'
+import { nightBackdrop, panelButton, button, pixelText, drawSenseIcon } from '../ui/widgets.js'
 import { HERO_CARDS } from './GameSelect.js'
 import { SENSES } from '../systems/Hunter.js'
 
@@ -36,7 +36,7 @@ export default class ModePageScene extends Phaser.Scene {
   create(data) {
     this.mode = data?.mode || 'hunt'
     const info = MODE_INFO[this.mode]
-    addBackdrop(this, 'bg-blue')
+    nightBackdrop(this)
     pixelText(this, GAME_WIDTH / 2, 40, info.title, 22, '#ffe066')
     info.blurb.forEach((line, i) => pixelText(this, GAME_WIDTH / 2, 74 + i * 14, line, 8, '#cdd7ee'))
 

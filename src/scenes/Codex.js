@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { ContentLoader } from '../systems/ContentLoader.js'
-import { addBackdrop, button, pixelText } from '../ui/widgets.js'
+import { nightBackdrop, button, pixelText } from '../ui/widgets.js'
 import { showLessonCard } from '../ui/domOverlay.js'
 
 const WORLD_TAG = { matlab: 'MAT', c: 'C', cpp: 'C++' }
@@ -13,7 +13,7 @@ export default class CodexScene extends Phaser.Scene {
   }
 
   create() {
-    addBackdrop(this, 'bg-purple', 0.62)
+    nightBackdrop(this)
     pixelText(this, GAME_WIDTH / 2, 38, 'CODEX', 18, '#ffe066')
 
     const lessons = new ContentLoader(this).lessons()

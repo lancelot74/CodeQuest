@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
-import { addBackdrop, panelButton, pixelText, ensureGlowTexture } from '../ui/widgets.js'
+import { nightBackdrop, panelButton, pixelText, ensureGlowTexture } from '../ui/widgets.js'
 import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 
@@ -16,7 +16,7 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
-    addBackdrop(this, 'bg-blue')
+    nightBackdrop(this, { treeline: false }) // the vignette below brings its own forest
     ensureGlowTexture(this)
     this.buildVignette()
 
@@ -38,11 +38,13 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   buildVignette() {
-    // moon up in the corner, behind the title
+    // full round moon with craters, up in the corner behind the title
     const mx = GAME_WIDTH - 70
-    this.add.image(mx, 52, 'menu-glow').setScale(1.3).setAlpha(0.22).setTint(0xcdd7ee)
-    this.add.circle(mx, 52, 17, 0xe8edf8, 0.9)
-    this.add.circle(mx - 6, 48, 14, 0x141a2e, 1) // crescent bite
+    this.add.image(mx, 52, 'menu-glow').setScale(1.4).setAlpha(0.22).setTint(0xcdd7ee)
+    this.add.circle(mx, 52, 16, 0xe8edf8, 1)
+    this.add.circle(mx - 5, 47, 3, 0xc6cfe4, 1)
+    this.add.circle(mx + 5, 57, 2.2, 0xc6cfe4, 1)
+    this.add.circle(mx + 7, 46, 1.5, 0xc6cfe4, 1)
 
     // forest floor strip along the bottom, dimmed to night
     const stripY = GAME_HEIGHT - 48
@@ -78,6 +80,30 @@ export default class MainMenuScene extends Phaser.Scene {
         ease: 'Sine.easeInOut',
       })
     }
+
+    // blood moon layer: an identical red moon + a red wash over the whole scene,
+    // crossfaded in and out on a slow cycle (mirrors the night.bloodMoon event)
+    this.bloodMoon = [
+      this.add.circle(mx, 52, 16, 0xd84848, 1),
+      this.add.circle(mx - 5, 47, 3, 0xab3434, 1),
+      this.add.circle(mx + 5, 57, 2.2, 0xab3434, 1),
+      this.add.circle(mx + 7, 46, 1.5, 0xab3434, 1),
+    ]
+    this.bloodHalo = this.add.image(mx, 52, 'menu-glow').setScale(1.4).setTint(0xff6a5a)
+    this.bloodWash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x4a0a14, 1).setOrigin(0, 0).setDepth(4)
+    for (const e of [...this.bloodMoon, this.bloodHalo, this.bloodWash]) e.setAlpha(0)
+    this.bloodOn = false
+    this.time.addEvent({ delay: 14000, loop: true, callback: () => this.turnMoon() })
+  }
+
+  // The moon turns: blood rises, the whole night flushes red, then it wanes again.
+  turnMoon() {
+    this.bloodOn = !this.bloodOn
+    const ease = 'Sine.easeInOut'
+    const dur = 2800
+    this.tweens.add({ targets: this.bloodMoon, alpha: this.bloodOn ? 1 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.bloodHalo, alpha: this.bloodOn ? 0.26 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.bloodWash, alpha: this.bloodOn ? 0.22 : 0, duration: dur, ease })
   }
 
   // A hunter silhouette ambles across the strip — footsteps swell as it nears the
