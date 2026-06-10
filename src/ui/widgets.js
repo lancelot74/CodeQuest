@@ -79,20 +79,41 @@ export function ensureGlowTexture(scene) {
   c.refresh()
 }
 
-// Glyph for a hunter sense (eye / ear / nose triangle) drawn into a Graphics object.
-// Shared by the NIGHT HUNT HUD, its rules banner and the menu screens.
+// Glyph for a hunter sense drawn into a Graphics object, fitting a ~16px box around
+// (x, y). Shared by the NIGHT HUNT HUD, its rules banner and the menu screens.
 export function drawSenseIcon(g, x, y, glyph, color) {
-  g.lineStyle(2, color, 1).fillStyle(color, 1)
+  const rad = Phaser.Math.DegToRad
   if (glyph === 'eye') {
-    g.strokeCircle(x, y, 7)
-    g.fillCircle(x, y, 3)
+    // almond eye: lens outline, iris, and a glint so it reads as watching
+    g.lineStyle(2, color, 1).strokeEllipse(x, y, 16, 10)
+    g.fillStyle(color, 1).fillCircle(x, y, 3)
+    g.fillStyle(0xffffff, 0.9).fillCircle(x + 1.5, y - 1.5, 1.2)
   } else if (glyph === 'ear') {
+    // ear shell with inner fold and lobe, plus a sound wave arriving from the left
+    g.lineStyle(2, color, 1)
     g.beginPath()
-    g.arc(x + 1, y, 7, Phaser.Math.DegToRad(-70), Phaser.Math.DegToRad(150), false)
+    g.arc(x + 3, y - 1, 6, rad(-100), rad(120), false)
     g.strokePath()
-    g.fillCircle(x - 1, y + 3, 2)
+    g.beginPath()
+    g.arc(x + 2, y, 3, rad(-90), rad(60), false)
+    g.strokePath()
+    g.fillStyle(color, 1).fillCircle(x + 1, y + 5, 1.6)
+    g.lineStyle(2, color, 0.7)
+    g.beginPath()
+    g.arc(x - 7, y, 3.5, rad(-55), rad(55), false)
+    g.strokePath()
   } else {
-    g.fillTriangle(x - 6, y + 5, x + 6, y + 5, x, y - 6)
+    // snout with two scent trails curling upward
+    g.fillStyle(color, 1).fillTriangle(x - 5, y + 7, x + 5, y + 7, x, y + 1)
+    g.lineStyle(2, color, 0.85)
+    for (const dx of [-3, 3]) {
+      g.beginPath()
+      g.arc(x + dx, y - 2, 2.2, rad(90), rad(270), false)
+      g.strokePath()
+      g.beginPath()
+      g.arc(x + dx, y - 6.4, 2.2, rad(90), rad(270), true)
+      g.strokePath()
+    }
   }
 }
 

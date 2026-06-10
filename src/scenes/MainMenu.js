@@ -81,8 +81,8 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   // A hunter silhouette ambles across the strip — footsteps swell as it nears the
-  // middle, and any torch it passes is snuffed dark for a beat. You hear cobb before
-  // you see him, exactly like in the woods.
+  // middle, and any torch it passes is snuffed dark for a beat. You hear the hunter
+  // before you see it, exactly like in the woods.
   spawnWalker() {
     if (this.walker) return
     const fromLeft = Math.random() < 0.5

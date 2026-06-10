@@ -5,9 +5,9 @@ import { Audio, SFX } from './AudioSystem.js'
 // Stealth is the whole game: while one can't sense you it patrols, and only once
 // its awareness meter fills does it CHASE and fire the skin's signature attack.
 export const SENSES = {
-  sight: { key: 'sight', code: 'cobb.sight', color: 0xffd24a, glyph: 'eye' },
-  hearing: { key: 'hearing', code: 'cobb.hearing', color: 0x53d2ff, glyph: 'ear' },
-  smell: { key: 'smell', code: 'cobb.smell', color: 0xb47cff, glyph: 'nose' },
+  sight: { key: 'sight', code: 'hunter.sight', color: 0xffd24a, glyph: 'eye' },
+  hearing: { key: 'hearing', code: 'hunter.hearing', color: 0x53d2ff, glyph: 'ear' },
+  smell: { key: 'smell', code: 'hunter.smell', color: 0xb47cff, glyph: 'nose' },
 }
 
 export const SKINS = {
@@ -216,7 +216,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
         this.rageCooldown = RAGE_COOLDOWN
         this.body.setVelocity(0, 0)
         this.setTint(0x55607a) // winded — visibly drained until it recovers
-        this.scene.flashBanner('cobb.rage = false', '#7ab8ff')
+        this.scene.flashBanner('hunter.rage = false', '#7ab8ff')
       } else if (lostContact) {
         this.mode = 'CALM'
         this.calmTimer = CALM_TIME
@@ -241,7 +241,7 @@ export default class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.mode = 'CHASE'
     this.chaseTimer = RAGE_TIME
     // telegraph the snap in the game's code-speak so the player knows the rules changed
-    this.scene.flashBanner('cobb.rage = true', '#ff3b3b')
+    this.scene.flashBanner('hunter.rage = true', '#ff3b3b')
     Audio.play(this.scene, SFX.crit, { volume: 0.7, rate: 0.8 })
     // night.hivemind: one rage wakes the pack — the others converge on your position
     if (this.scene.hivemindOn) {

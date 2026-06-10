@@ -140,7 +140,7 @@ const NIGHT_EVENTS = [
   },
 ]
 
-// NIGHT HUNT — a top-down survival-horror roguelite (Cobb Can Move-style). Roam a
+// NIGHT HUNT — a top-down survival-horror roguelite. Roam a
 // dark forest opening chests and reach the exit while 1-3 stalkers hunt you; each
 // round's modifier budget rolls the pack size, senses + boss skins. See Hunter.js.
 export default class NightHuntScene extends Phaser.Scene {
@@ -1290,6 +1290,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.roundText = pixelText(this, 12, 14, 'ROUND 1', 10, '#ffe066').setOrigin(0, 0.5).setScrollFactor(0).setDepth(9500)
     this.senseIcon = this.add.graphics().setScrollFactor(0).setDepth(9501)
     this.senseText = pixelText(this, GAME_WIDTH - 12, 32, '', 7, '#cdd7ee').setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
+    this.modEls = [] // per-round rules column rebuilt under the sense icons
     // enraged-chase countdown — only shown while a hunter is actively chasing
     // sits below the chest + exit pip rows
     this.rageText = pixelText(this, GAME_WIDTH / 2, 54, '', 11, '#ff3b3b').setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(9502).setVisible(false)
@@ -1421,6 +1422,21 @@ export default class NightHuntScene extends Phaser.Scene {
       codes.push(sn.key)
     })
     this.senseText.setText(codes.join(' + '))
+
+    // everything else in force this round, in the banner's color language: boss
+    // powers red, hero debuffs blue, the night event orange
+    for (const t of this.modEls) t.destroy()
+    this.modEls = []
+    const rows = [
+      ...this.activePowers.map((m) => ({ text: m.label, color: '#ff7a6b' })),
+      ...this.activeDebuffs.map((m) => ({ text: m.label, color: '#7ab8ff' })),
+    ]
+    if (this.nightEvent) rows.push({ text: this.nightEvent.label, color: '#ffa64a' })
+    rows.forEach((r, i) => {
+      this.modEls.push(
+        pixelText(this, GAME_WIDTH - 12, 46 + i * 11, r.text, 6, r.color).setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
+      )
+    })
   }
 
   // ---- banners + overlays ---------------------------------------------------

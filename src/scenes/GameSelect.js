@@ -58,7 +58,7 @@ export default class GameSelectScene extends Phaser.Scene {
 
     // cycling sense line: glyph + its code, one sense at a time
     this.senseG = this.add.graphics()
-    this.senseLine = pixelText(this, cx + 12, cy + 18, '', 9, '#cdd7ee').setOrigin(0, 0.5)
+    this.senseLine = pixelText(this, cx + 12, cy + 18, '', 8, '#cdd7ee').setOrigin(0, 0.5)
     this.senseKeys = Object.keys(SENSES)
     this.senseIdx = 0
     this.showSense()
