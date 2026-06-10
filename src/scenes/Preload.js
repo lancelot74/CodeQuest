@@ -83,7 +83,7 @@ export default class PreloadScene extends Phaser.Scene {
     // Background music + cues (Mind's Eye Loops pack, ogg). Keys used by Music.*
     const mus = (key, file) => this.load.audio(key, `assets/audio/music/${file}`)
     mus('bgm-main', 'veil-of-night.ogg')
-    mus('bgm-tension', 'mental-vortex.ogg')
+    mus('bgm-tension', 'dark-forest.ogg')
     mus('cue-exit', 'somethings-wrong-in.ogg')
     mus('cue-chest', 'fredelig-out.ogg')
 
