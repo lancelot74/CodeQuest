@@ -40,11 +40,13 @@ export default class MainMenuScene extends Phaser.Scene {
   buildVignette() {
     // full round moon with craters, up in the corner behind the title
     const mx = GAME_WIDTH - 70
-    this.add.image(mx, 52, 'menu-glow').setScale(1.4).setAlpha(0.22).setTint(0xcdd7ee)
+    this.moonHalo = this.add.image(mx, 52, 'menu-glow').setScale(1.4).setAlpha(0.22).setTint(0xcdd7ee)
     this.add.circle(mx, 52, 16, 0xe8edf8, 1)
     this.add.circle(mx - 5, 47, 3, 0xc6cfe4, 1)
     this.add.circle(mx + 5, 57, 2.2, 0xc6cfe4, 1)
     this.add.circle(mx + 7, 46, 1.5, 0xc6cfe4, 1)
+    // sky-colored shadow disc: fading it in carves the full moon into a crescent
+    this.moonShadow = this.add.circle(mx + 6, 47, 14.5, 0x131b35, 1).setAlpha(0)
 
     // forest floor strip along the bottom, dimmed to night
     const stripY = GAME_HEIGHT - 48
@@ -92,18 +94,23 @@ export default class MainMenuScene extends Phaser.Scene {
     this.bloodHalo = this.add.image(mx, 52, 'menu-glow').setScale(1.4).setTint(0xff6a5a)
     this.bloodWash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x4a0a14, 1).setOrigin(0, 0).setDepth(4)
     for (const e of [...this.bloodMoon, this.bloodHalo, this.bloodWash]) e.setAlpha(0)
-    this.bloodOn = false
+    this.moonPhase = 'full'
     this.time.addEvent({ delay: 14000, loop: true, callback: () => this.turnMoon() })
   }
 
-  // The moon turns: blood rises, the whole night flushes red, then it wanes again.
+  // The moon turns on a slow cycle — full, crescent, or blood, never the same phase
+  // twice. Blood flushes the whole scene red; the crescent dims the halo with it.
   turnMoon() {
-    this.bloodOn = !this.bloodOn
+    this.moonPhase = Phaser.Utils.Array.GetRandom(['full', 'crescent', 'blood'].filter((p) => p !== this.moonPhase))
+    const blood = this.moonPhase === 'blood'
+    const crescent = this.moonPhase === 'crescent'
     const ease = 'Sine.easeInOut'
     const dur = 2800
-    this.tweens.add({ targets: this.bloodMoon, alpha: this.bloodOn ? 1 : 0, duration: dur, ease })
-    this.tweens.add({ targets: this.bloodHalo, alpha: this.bloodOn ? 0.26 : 0, duration: dur, ease })
-    this.tweens.add({ targets: this.bloodWash, alpha: this.bloodOn ? 0.22 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.bloodMoon, alpha: blood ? 1 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.bloodHalo, alpha: blood ? 0.26 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.bloodWash, alpha: blood ? 0.22 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.moonShadow, alpha: crescent ? 1 : 0, duration: dur, ease })
+    this.tweens.add({ targets: this.moonHalo, alpha: crescent ? 0.1 : 0.22, duration: dur, ease })
   }
 
   // A hunter silhouette ambles across the strip — footsteps swell as it nears the
