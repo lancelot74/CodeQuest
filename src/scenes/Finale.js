@@ -65,6 +65,7 @@ export default class FinaleScene extends Phaser.Scene {
     this.torches = []
     this.bramble = null
     this.brambleBits = []
+    this._giftBall = null
     this._prevE = false
     this.stamina = STAM_MAX
     this.exhausted = false
@@ -218,6 +219,7 @@ export default class FinaleScene extends Phaser.Scene {
           if (!this.gameOver && Math.abs(d.x - this.player.x) < 26 && Math.abs(y - this.player.y) < 22) this.playerHit()
         },
         onComplete: () => {
+          if (!d.active || d.dead) return
           d.swooping = false
           d.play(`${d.color}-fly`)
         },
@@ -295,6 +297,7 @@ export default class FinaleScene extends Phaser.Scene {
       menu.text.setScrollFactor(0)
     })
   }
+
   // A burning barrier across the lane: the throw lesson. One ember burns it away.
   buildBramble() {
     const x = BRAMBLE_X
@@ -324,6 +327,9 @@ export default class FinaleScene extends Phaser.Scene {
 
   sealDoorsBehind() {
     for (const d of this.doors) {
+      // the last door waits for the gift: sealing it with the uncaught catch
+      // lesson on the far side would strand the run
+      if (this._giftBall && d.x === DOOR_X[2]) continue
       if (!d.sealed && this.player.x > d.x + 24) {
         d.sealed = true
         d.slab.setVisible(true)
