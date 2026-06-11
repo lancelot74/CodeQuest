@@ -31,7 +31,15 @@ const BRAMBLE_X = 900
 const CORR_TOP = 132 // the pre-arena stretch squeezes to this lane...
 const CORR_BOT = 228 // ...so the hero can't stray; the arena opens back up
 
-const CATCH_RADIUS = 40 // tight-ish: the kill distance is 16, this is the skill window
+// Difficulty: the catch window shrinks (kill distance is 16) and the dragons gain
+// embers as the night darkens. Chosen at the lair entrance; retries keep the pick.
+const DIFFICULTIES = {
+  easy: { label: 'EASY', catch: 45, hpBonus: 0, color: '#7cfc98' },
+  normal: { label: 'NORMAL', catch: 38, hpBonus: 2, color: '#cdd7ee' },
+  hard: { label: 'HARD', catch: 33, hpBonus: 4, color: '#ffa64a' },
+  nightmare: { label: 'NIGHTMARE', catch: 28, hpBonus: 6, color: '#ff3b3b' },
+}
+
 const EMBER_ORBIT = 24
 const THROW_SPEED = 280
 const LOB_SPEED = 150
@@ -54,6 +62,7 @@ export default class FinaleScene extends Phaser.Scene {
     this.heroKey = HEROES.some((h) => h.key === wanted) ? wanted : 'ninja'
     this.hero = HEROES.find((h) => h.key === this.heroKey)
     this.fromArena = !!data?.fromArena
+    this.diffFromData = DIFFICULTIES[data?.diff] ? data.diff : null
   }
 
   create() {
@@ -88,7 +97,34 @@ export default class FinaleScene extends Phaser.Scene {
     this.events.once('shutdown', () => hideTouchControls())
 
     Music.play(this, 'bgm-trap', { fade: 800 })
-    if (this.fromArena) this.jumpToArena() // stub until the arena task
+    if (this.diffFromData) this.applyDifficulty(this.diffFromData)
+    else this.showDifficultyPicker()
+  }
+
+  // Lock in the night's difficulty; on an arena retry this also re-enters the fight.
+  applyDifficulty(key) {
+    this.diffKey = key
+    this.catchRadius = DIFFICULTIES[key].catch
+    this.hpBonus = DIFFICULTIES[key].hpBonus
+    this.choosing = false
+    if (this.fromArena && this.stage === 'walkway') this.jumpToArena()
+  }
+
+  showDifficultyPicker() {
+    this.choosing = true
+    const els = [
+      this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.78).setOrigin(0, 0).setScrollFactor(0).setDepth(11000),
+      pixelText(this, GAME_WIDTH / 2, 60, 'CHOOSE YOUR NIGHT', 16, '#ffe066').setScrollFactor(0).setDepth(11001),
+    ]
+    Object.entries(DIFFICULTIES).forEach(([key, d], i) => {
+      const b = panelButton(this, GAME_WIDTH / 2, 116 + i * 44, d.label, () => {
+        this.applyDifficulty(key)
+        for (const e of els) e.destroy()
+      }, { width: 200, depth: 11001, color: d.color })
+      b.bg.setScrollFactor(0)
+      b.text.setScrollFactor(0)
+      els.push(b.bg, b.text)
+    })
   }
 
   buildWorld() {
@@ -433,18 +469,18 @@ export default class FinaleScene extends Phaser.Scene {
       this.buildTorches()
       Music.play(this, 'bgm-boss', { fade: 1200 })
       this.flashBanner('THE GREEN', '#6fcf5a')
-      this.dragon = new Dragon(this, 'green', DOOR_X[2] + 220, LANE_TOP + 40, GREEN_HP)
+      this.dragon = new Dragon(this, 'green', DOOR_X[2] + 220, LANE_TOP + 40, GREEN_HP + this.hpBonus)
       this.dragon.mode = 'hover'
       this._atkT = 2.5
       this._swoopT = 7
-      this.buildPips(GREEN_HP, 0x6fcf5a)
+      this.buildPips(GREEN_HP + this.hpBonus, 0x6fcf5a)
     } else if (name === 'arena2') {
       this.flashBanner('THE RED', '#e05a4a')
-      this.dragon = new Dragon(this, 'red', DOOR_X[2] + 220, LANE_TOP + 40, RED_HP)
+      this.dragon = new Dragon(this, 'red', DOOR_X[2] + 220, LANE_TOP + 40, RED_HP + this.hpBonus)
       this.dragon.mode = 'hover'
       this._atkT = 2.2
       this._swoopT = 9
-      this.buildPips(RED_HP, 0xe05a4a)
+      this.buildPips(RED_HP + this.hpBonus, 0xe05a4a)
     }
   }
 
@@ -513,7 +549,7 @@ export default class FinaleScene extends Phaser.Scene {
     }
     if (!edge || !this.canCatch) return
     let best = null
-    let bd = CATCH_RADIUS
+    let bd = this.catchRadius
     for (const f of this.fireballs) {
       if (!f.catchable || f.kind === 'thrown') continue
       const d = Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.player.x, this.player.y)
@@ -568,7 +604,7 @@ export default class FinaleScene extends Phaser.Scene {
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 34, 'BURNED', 26, '#ff8a3c').setScrollFactor(0).setDepth(11001)
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 4, this.reachedArena ? 'retry from the arena door' : 'retry the descent', 8, '#cdd7ee').setScrollFactor(0).setDepth(11001)
-    const retry = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 28, 'RETRY', () => this.scene.restart({ hero: this.heroKey, fromArena: this.reachedArena }), { width: 150, depth: 11001 })
+    const retry = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 28, 'RETRY', () => this.scene.restart({ hero: this.heroKey, fromArena: this.reachedArena, diff: this.diffKey }), { width: 150, depth: 11001 })
     const menu = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 64, 'MAIN MENU', () => this.scene.start('MainMenu'), { width: 150, depth: 11001 })
     for (const b of [retry, menu]) {
       b.bg.setScrollFactor(0)
@@ -668,7 +704,7 @@ export default class FinaleScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (this.gameOver) {
+    if (this.gameOver || this.choosing) {
       this.updateFog()
       return
     }
