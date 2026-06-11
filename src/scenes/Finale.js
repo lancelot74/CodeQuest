@@ -74,6 +74,7 @@ export default class FinaleScene extends Phaser.Scene {
     this.buildPlayer()
     this.buildFog()
     this.buildHud()
+    this.buildDoors()
 
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
@@ -117,6 +118,48 @@ export default class FinaleScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true)
     this.player.body.setSize(h.body[0], h.body[1])
     if (h.off) this.player.body.setOffset(h.off[0], h.off[1])
+  }
+
+  // Dark slabs at each stage boundary. They start passable; once the hero is
+  // through, the body enables and the way back is sealed.
+  buildDoors() {
+    this.doors = DOOR_X.map((x) => {
+      const slab = this.add.rectangle(x, (LANE_TOP + LANE_BOT) / 2, 12, LANE_BOT - LANE_TOP, 0x05060d, 0.95).setDepth(800).setVisible(false)
+      this.physics.add.existing(slab, true)
+      slab.body.enable = false
+      this.physics.add.collider(this.player, slab)
+      return { x, slab, sealed: false }
+    })
+  }
+
+  sealDoorsBehind() {
+    for (const d of this.doors) {
+      if (!d.sealed && this.player.x > d.x + 24) {
+        d.sealed = true
+        d.slab.setVisible(true)
+        d.slab.body.enable = true
+        Audio.play(this, SFX.heavy, { volume: 0.5, rate: 0.6 })
+      }
+    }
+  }
+
+  // walkway -> corridor1 -> gift -> corridor2 -> arena1 -> arena2 -> rage -> dawn.
+  // Transitions up to the arena are driven by player x; the fights drive the rest.
+  updateStages() {
+    if (this.stage === 'walkway' && this.player.x > DOOR_X[0]) {
+      this.startStage('corridor1')
+    } else if (this.stage === 'corridor1' && this.player.x > GIFT_X) {
+      this.startStage('gift')
+    } else if (this.stage === 'corridor2' && this.player.x > DOOR_X[2]) {
+      this.startStage('arena1')
+    }
+  }
+
+  startStage(name) {
+    this.stage = name
+    if (name === 'corridor1') this.flashBanner('something flies above', '#8ea0c0')
+    // 'gift', 'corridor2', 'arena1', 'arena2', 'rage' and 'dawn' get their
+    // entry logic in later tasks
   }
 
   buildFog() {
@@ -209,6 +252,8 @@ export default class FinaleScene extends Phaser.Scene {
     }
     const dt = delta / 1000
     this.handlePlayer(dt)
+    this.sealDoorsBehind()
+    this.updateStages()
     this.drawStamina()
     this.updateFog()
   }
