@@ -16,6 +16,11 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
+    // dev shortcut: localhost:5173/#finale jumps straight to the lair
+    if (window.location.hash === '#finale') {
+      this.scene.start('Finale')
+      return
+    }
     nightBackdrop(this, { treeline: false }) // the vignette below brings its own forest
     ensureGlowTexture(this)
     this.buildVignette()
