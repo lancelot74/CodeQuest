@@ -134,9 +134,129 @@ export default class FinaleScene extends Phaser.Scene {
     })
   }
 
-  updatePips() {} // real body in the arena task
-  onDragonDown() {} // real body in the arena task
-  onDragonHurt() {} // real body in the arena task
+  // Standing torch ring: the first fully lit space in the game — until the rage.
+  buildTorches() {
+    const cx = (DOOR_X[2] + WORLD_W) / 2
+    const positions = [
+      [cx - 170, LANE_TOP + 16], [cx, LANE_TOP + 10], [cx + 170, LANE_TOP + 16],
+      [cx - 170, LANE_BOT - 16], [cx, LANE_BOT - 10], [cx + 170, LANE_BOT - 16],
+    ]
+    for (const [x, y] of positions) {
+      const glow = this.add.ellipse(x, y - 10, 14, 10, 0xffb24a, 0.85).setDepth(y)
+      const flame = this.add.ellipse(x, y - 16, 7, 13, 0xffd86b, 1).setDepth(y + 1)
+      this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.78, yoyo: true, repeat: -1, duration: 300, ease: 'Sine.easeInOut' })
+      this.torches.push({ x, y: y - 12, glow, flame, lit: true })
+    }
+  }
+
+  buildPips(count, tint) {
+    for (const p of this.pips) p.destroy()
+    this.pips = []
+    const x0 = GAME_WIDTH / 2 - ((count - 1) * 22) / 2
+    for (let i = 0; i < count; i++) {
+      const p = this.add.sprite(x0 + i * 22, 18, 'fireball').setScrollFactor(0).setDepth(9500).setScale(0.9).setTint(tint)
+      p.play('fireball')
+      this.pips.push(p)
+    }
+  }
+
+  updatePips() {
+    this.pips.forEach((p, i) => p.setAlpha(i < (this.dragon?.hp ?? 0) ? 1 : 0.18))
+  }
+
+  // Hover drift + attack timers. Green lobs singles; Red fans three (center
+  // catchable) — rage speeds the fans up. Swoops/dives telegraph with a floor
+  // line, then cross it; contact kills unless the shield eats it.
+  updateDragon(dt) {
+    const d = this.dragon
+    if (!d || d.dead || d.swooping) return
+    const cx = (DOOR_X[2] + WORLD_W) / 2
+    d.x = cx + Math.sin(this.time.now / 1700) * 180
+    d.y = LANE_TOP + 42 + Math.sin(this.time.now / 900) * 16
+    d.setFlipX(this.player.x > d.x)
+    d.setDepth(940)
+
+    this._atkT -= dt
+    if (this._atkT <= 0) {
+      this._atkT = d.color === 'green' ? 2.4 : this.stage === 'rage' ? 1.6 : 2.8
+      const ang = Math.atan2(this.player.y - d.y, this.player.x - d.x)
+      Audio.play(this, SFX.spit, { rate: 0.7 })
+      if (d.color === 'green') {
+        this.spawnFireball(d.x, d.y + 12, Math.cos(ang) * LOB_SPEED, Math.sin(ang) * LOB_SPEED, 'lob', true)
+      } else {
+        for (const off of [-0.35, 0, 0.35]) {
+          this.spawnFireball(d.x, d.y + 12, Math.cos(ang + off) * FAN_SPEED, Math.sin(ang + off) * FAN_SPEED, 'fan', off === 0)
+        }
+      }
+    }
+
+    this._swoopT -= dt
+    if (this._swoopT <= 0) {
+      this._swoopT = d.color === 'green' ? 7 : 9
+      this.runSwoop(d)
+    }
+  }
+
+  runSwoop(d) {
+    d.swooping = true
+    const y = this.player.y
+    const tele = this.add.rectangle(this.cameras.main.scrollX + GAME_WIDTH / 2, y, GAME_WIDTH, 4, 0xff6a4a, 0.5).setDepth(930)
+    this.tweens.add({ targets: tele, alpha: 0.1, yoyo: true, repeat: 3, duration: 100 })
+    Audio.play(this, SFX.crit, { volume: 0.4, rate: 0.7 })
+    this.time.delayedCall(800, () => {
+      tele.destroy()
+      if (this.gameOver || !d.active || d.dead) return
+      const fromLeft = d.x < this.player.x
+      d.play(`${d.color}-glide`)
+      d.setPosition(this.cameras.main.scrollX + (fromLeft ? -40 : GAME_WIDTH + 40), y - 6)
+      d.setFlipX(fromLeft)
+      this.tweens.add({
+        targets: d,
+        x: d.x + (fromLeft ? 1 : -1) * (GAME_WIDTH + 120),
+        duration: 900,
+        onUpdate: () => {
+          if (!this.gameOver && Math.abs(d.x - this.player.x) < 26 && Math.abs(y - this.player.y) < 22) this.playerHit()
+        },
+        onComplete: () => {
+          d.swooping = false
+          d.play(`${d.color}-fly`)
+        },
+      })
+    })
+  }
+
+  onDragonHurt(d) {
+    // the Red's last ember snuffs the lights: the rage
+    if (d.color === 'red' && d.hp === 1 && this.stage !== 'rage') {
+      this.stage = 'rage'
+      this.flashBanner('dragon.rage = true', '#ff3b3b')
+      Audio.play(this, SFX.crit, { volume: 0.8, rate: 0.6 })
+      for (const t of this.torches) {
+        t.lit = false
+        this.tweens.add({ targets: [t.glow, t.flame], alpha: 0, duration: 600 })
+      }
+    }
+  }
+
+  onDragonDown(d) {
+    d.dead = true
+    this.tweens.killTweensOf(d)
+    Audio.play(this, SFX.enemyDie, { volume: 0.9, rate: 0.7 })
+    CombatSystem.puff(this, d.x, d.y, d.color === 'green' ? 0x6fcf5a : 0xe05a4a, 950)
+    this.tweens.add({ targets: d, y: d.y + 60, alpha: 0, angle: 30, duration: 900, ease: 'Quad.easeIn', onComplete: () => d.destroy() })
+    this.dragon = null
+    for (const f of [...this.fireballs]) if (f.kind !== 'thrown') this.killFireball(f)
+    if (d.color === 'green') {
+      this.flashBanner('dragon.green = down', '#6fcf5a')
+      this.time.delayedCall(2000, () => {
+        if (!this.gameOver) this.startStage('arena2')
+      })
+    } else {
+      this.startDawn() // real body in the dawn task
+    }
+  }
+
+  startDawn() {} // replaced in the dawn task
   // A burning barrier across the lane: the throw lesson. One ember burns it away.
   buildBramble() {
     const x = BRAMBLE_X
@@ -244,6 +364,23 @@ export default class FinaleScene extends Phaser.Scene {
       this.flashBanner('hero.catch = true', '#ffd24a')
       this.buildBramble()
       this._strafeT = 3
+    } else if (name === 'arena1') {
+      this.reachedArena = true
+      this.buildTorches()
+      Music.play(this, 'bgm-boss', { fade: 1200 })
+      this.flashBanner('THE GREEN', '#6fcf5a')
+      this.dragon = new Dragon(this, 'green', DOOR_X[2] + 220, LANE_TOP + 40, GREEN_HP)
+      this.dragon.mode = 'hover'
+      this._atkT = 2.5
+      this._swoopT = 7
+      this.buildPips(GREEN_HP, 0x6fcf5a)
+    } else if (name === 'arena2') {
+      this.flashBanner('THE RED', '#e05a4a')
+      this.dragon = new Dragon(this, 'red', DOOR_X[2] + 220, LANE_TOP + 40, RED_HP)
+      this.dragon.mode = 'hover'
+      this._atkT = 2.2
+      this._swoopT = 9
+      this.buildPips(RED_HP, 0xe05a4a)
     }
   }
 
@@ -429,7 +566,16 @@ export default class FinaleScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 0, y: GAME_HEIGHT / 2 - 90, duration: 1100, onComplete: () => t.destroy() })
   }
 
-  jumpToArena() {} // replaced in the arena task
+  // Retry-from-arena: skip the corridors, gift granted, doors sealed.
+  jumpToArena() {
+    this.canCatch = true
+    for (const d of this.doors) {
+      d.sealed = true
+      d.slab.setVisible(true)
+      d.slab.body.enable = true
+    }
+    this.startStage('arena1')
+  }
 
   handlePlayer(dt) {
     const k = this.keys
@@ -477,6 +623,7 @@ export default class FinaleScene extends Phaser.Scene {
       this.runStrafe()
     }
     if (this.stage === 'gift') this.updateGift()
+    this.updateDragon(dt)
     this.handleEmber(dt)
     this.updateFireballs(dt)
     this.drawStamina()
