@@ -26,6 +26,7 @@ export function createEnemyAnimations(scene) {
   define(scene, 'cloud1', 'cloud1', 6, -1)
   define(scene, 'cloud2', 'cloud2', 6, -1)
   define(scene, 'cloud-rain', 'cloud-rain', 14, -1)
+  define(scene, 'cloud-rain-tile', 'cloud-rain-tile', 14, -1)
   define(scene, 'cloud-effect', 'cloud-effect', 10, -1)
   define(scene, 'cloud-lightning', 'cloud-lightning', 14, 0)
 }

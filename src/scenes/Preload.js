@@ -50,6 +50,8 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('cloud1', 'assets/game/clouds/cloud1.png', CLOUD)
     this.load.spritesheet('cloud2', 'assets/game/clouds/cloud2.png', CLOUD)
     this.load.spritesheet('cloud-rain', 'assets/game/clouds/rain.png', CLOUD)
+    // bottom-cropped rain frames (48x40): stack seamlessly for tall curtains
+    this.load.spritesheet('cloud-rain-tile', 'assets/game/clouds/rain-tile.png', { frameWidth: 48, frameHeight: 40 })
     this.load.spritesheet('cloud-effect', 'assets/game/clouds/effect.png', CLOUD)
     this.load.spritesheet('cloud-lightning', 'assets/game/clouds/lightning.png', CLOUD)
 

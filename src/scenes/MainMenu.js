@@ -96,43 +96,22 @@ export default class MainMenuScene extends Phaser.Scene {
       })
     }
 
-    // drifting clouds: calm grey faces on quiet nights, two trailing rain
-    // curtains that fall all the way to the forest floor; the blood moon turns
-    // the whole flock into the angry storm breed
-    const DEFS = [
-      { fx: 0.14, y: 80, scale: 2.2, rain: true },
-      { fx: 0.36, y: 46, scale: 1.6, rain: false },
-      { fx: 0.6, y: 88, scale: 1.9, rain: false },
-      { fx: 0.85, y: 44, scale: 1.5, rain: true },
-    ]
-    this.clouds = DEFS.map((d) => {
-      const spr = this.add.sprite(GAME_WIDTH * d.fx, d.y, 'cloud1').setScale(d.scale).setDepth(1)
-      spr.play('cloud1')
-      this.tweens.add({
-        targets: spr,
-        x: spr.x + Phaser.Math.Between(40, 80),
-        yoyo: true,
-        repeat: -1,
-        duration: Phaser.Math.Between(8000, 13000),
-        ease: 'Sine.easeInOut',
-      })
-      const c = { spr, scale: d.scale, fx: [] }
-      if (d.rain) {
-        // stack curtain segments from under the cloud down to the strip, so the
-        // rain actually lands instead of stopping mid-sky
-        const segH = 48 * d.scale
-        for (let yy = d.y + segH * 0.7; yy < GAME_HEIGHT - 26; yy += segH) {
-          const seg = this.add.sprite(spr.x, yy, 'cloud-rain').setScale(d.scale).setAlpha(0.7).setDepth(1)
-          seg.play('cloud-rain')
-          c.fx.push(seg)
-        }
+    // free-roaming clouds: each picks its own pace and direction, drifts clean off
+    // one edge and re-enters from the other as a fresh cloud (new height + size)
+    this.clouds = []
+    for (let i = 0; i < 4; i++) {
+      const c = {
+        spr: this.add.sprite(Phaser.Math.Between(30, GAME_WIDTH - 30), Phaser.Math.Between(36, 92), 'cloud1').setDepth(1),
+        scale: Phaser.Math.FloatBetween(1.4, 2.3),
+        vx: Phaser.Math.FloatBetween(6, 16) * (Math.random() < 0.5 ? -1 : 1),
+        rain: i % 2 === 0,
+        fx: [],
       }
-      return c
-    })
-    // curtains hang from their clouds as they drift
-    this.events.on('update', () => {
-      for (const c of this.clouds) for (const seg of c.fx) seg.setX(c.spr.x)
-    })
+      c.spr.setScale(c.scale).play('cloud1')
+      if (c.rain) this.buildRainCurtain(c)
+      this.clouds.push(c)
+    }
+    this.events.on('update', (_t, delta) => this.driftClouds(delta))
 
     // blood moon layer: an identical red moon + a red wash over the whole scene,
     // crossfaded in and out on a slow cycle (mirrors the night.bloodMoon event)
@@ -164,9 +143,14 @@ export default class MainMenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.crescent, alpha: crescent ? 1 : 0, duration: dur, ease })
     this.tweens.add({ targets: this.moonHalo, alpha: crescent ? 0.1 : 0.22, duration: dur, ease })
 
-    // the clouds turn with the moon: angry storm faces under blood, and one of
-    // them spits a bolt as the red settles in
-    for (const c of this.clouds) c.spr.play(blood ? 'cloud2' : 'cloud1')
+    // the clouds turn with the moon: angry storm faces under blood — each on its
+    // own beat (a flock snapping in unison reads mechanical). Late turners check
+    // the CURRENT phase, so a quick flip back never strands an angry cloud.
+    for (const c of this.clouds) {
+      this.time.delayedCall(Phaser.Math.Between(0, 2600), () => {
+        c.spr.play(this.moonPhase === 'blood' ? 'cloud2' : 'cloud1')
+      })
+    }
     if (blood) {
       this.time.delayedCall(dur, () => {
         if (this.moonPhase !== 'blood') return
@@ -179,6 +163,42 @@ export default class MainMenuScene extends Phaser.Scene {
         bolt.once('animationcomplete', () => bolt.destroy())
         this.cameras.main.flash(120, 255, 240, 180)
       })
+    }
+  }
+
+  // Rain curtain under a cloud: seamless cropped tiles all the way down, with the
+  // full frame (bottom splashes intact) as the last segment so the rain lands.
+  buildRainCurtain(c) {
+    for (const s of c.fx) s.destroy()
+    c.fx = []
+    const tileH = 40 * c.scale
+    let yy = c.spr.y + 48 * c.scale * 0.7
+    while (yy < GAME_HEIGHT - 26 - tileH) {
+      const seg = this.add.sprite(c.spr.x, yy, 'cloud-rain-tile').setScale(c.scale).setAlpha(0.7).setDepth(1)
+      seg.play('cloud-rain-tile')
+      c.fx.push(seg)
+      yy += tileH
+    }
+    const splash = this.add.sprite(c.spr.x, yy, 'cloud-rain').setScale(c.scale).setAlpha(0.7).setDepth(1)
+    splash.play('cloud-rain')
+    c.fx.push(splash)
+  }
+
+  driftClouds(delta) {
+    const dt = delta / 1000
+    for (const c of this.clouds) {
+      c.spr.x += c.vx * dt
+      const half = 24 * c.scale + 12
+      if ((c.vx > 0 && c.spr.x > GAME_WIDTH + half) || (c.vx < 0 && c.spr.x < -half)) {
+        // fully out: re-enter from the opposite edge as a new cloud
+        c.spr.x = c.vx > 0 ? -half : GAME_WIDTH + half
+        c.spr.y = Phaser.Math.Between(36, 92)
+        c.scale = Phaser.Math.FloatBetween(1.4, 2.3)
+        c.vx = Phaser.Math.FloatBetween(6, 16) * Math.sign(c.vx)
+        c.spr.setScale(c.scale)
+        if (c.rain) this.buildRainCurtain(c)
+      }
+      for (const seg of c.fx) seg.setX(c.spr.x)
     }
   }
 
