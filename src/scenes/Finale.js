@@ -135,7 +135,32 @@ export default class FinaleScene extends Phaser.Scene {
   updatePips() {} // real body in the arena task
   onDragonDown() {} // real body in the arena task
   onDragonHurt() {} // real body in the arena task
-  buildBramble() {} // real body in the bramble task
+  // A burning barrier across the lane: the throw lesson. One ember burns it away.
+  buildBramble() {
+    const x = BRAMBLE_X
+    this.brambleBits = []
+    for (let y = LANE_TOP + 14; y < LANE_BOT; y += 26) {
+      const bit = this.add.image(x, y, 'hunt-tree').setScale(0.8).setOrigin(0.5, 0.7).setDepth(y).setTint(0xb3543a)
+      this.tweens.add({ targets: bit, alpha: 0.75, yoyo: true, repeat: -1, duration: 420 })
+      this.brambleBits.push(bit)
+    }
+    const wall = this.add.rectangle(x, (LANE_TOP + LANE_BOT) / 2, 16, LANE_BOT - LANE_TOP, 0x000000, 0)
+    this.physics.add.existing(wall, true)
+    this.physics.add.collider(this.player, wall)
+    this.bramble = { x, wall }
+  }
+
+  burnBramble() {
+    for (const bit of this.brambleBits) {
+      this.tweens.killTweensOf(bit)
+      this.tweens.add({ targets: bit, alpha: 0, duration: 500, onComplete: () => bit.destroy() })
+    }
+    CombatSystem.puff(this, this.bramble.x, this.player.y, 0xff8a3c, 950)
+    Audio.play(this, SFX.heavy, { volume: 0.7 })
+    this.bramble.wall.body.enable = false
+    this.bramble = null
+    this.flashBanner('the way is open', '#7cfc98')
+  }
 
   sealDoorsBehind() {
     for (const d of this.doors) {
@@ -244,6 +269,11 @@ export default class FinaleScene extends Phaser.Scene {
       f.spr.x += f.vx * dt
       f.spr.y += f.vy * dt
       if (f.kind === 'thrown') {
+        if (this.bramble && Math.abs(f.spr.x - this.bramble.x) < 18) {
+          this.killFireball(f)
+          this.burnBramble()
+          continue
+        }
         if (this.dragon && !this.dragon.dead && Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.dragon.x, this.dragon.y) < 30) {
           CombatSystem.puff(this, f.spr.x, f.spr.y, 0xffa64a, 950)
           this.killFireball(f)
