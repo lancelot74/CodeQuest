@@ -55,6 +55,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('cloud-effect', 'assets/game/clouds/effect.png', CLOUD)
     this.load.spritesheet('cloud-lightning', 'assets/game/clouds/lightning.png', CLOUD)
 
+    // Finale dragons (48px strips: fly + glide per color) and their fireball.
+    const DRG = { frameWidth: 48, frameHeight: 48 }
+    this.load.spritesheet('green-fly', 'assets/game/dragons/green1.png', DRG)
+    this.load.spritesheet('green-glide', 'assets/game/dragons/green2.png', DRG)
+    this.load.spritesheet('red-fly', 'assets/game/dragons/red1.png', DRG)
+    this.load.spritesheet('red-glide', 'assets/game/dragons/red2.png', DRG)
+    this.load.spritesheet('fireball', 'assets/game/dragons/fireball.png', { frameWidth: 32, frameHeight: 32 })
+
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
     const HUNT = 'assets/game/hunt'
@@ -101,6 +109,8 @@ export default class PreloadScene extends Phaser.Scene {
     mus('cue-exit', 'somethings-wrong-in.ogg')
     mus('cue-chest', 'fredelig-out.ogg')
     mus('bgm-trap', 'insanity.ogg') // loops while the hero is stuck in a hole
+    mus('bgm-boss', 'final-kill.ogg') // finale arena loop
+    mus('cue-dawn', 'roll-credits.ogg') // one-shot over the dawn screen
 
     this.load.json('worlds', 'data/worlds.json')
     this.load.json('lessons', 'data/lessons.json')

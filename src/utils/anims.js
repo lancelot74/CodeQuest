@@ -29,6 +29,12 @@ export function createEnemyAnimations(scene) {
   define(scene, 'cloud-rain-tile', 'cloud-rain-tile', 14, -1)
   define(scene, 'cloud-effect', 'cloud-effect', 10, -1)
   define(scene, 'cloud-lightning', 'cloud-lightning', 14, 0)
+  // finale dragons: two loops per color, plus the tumbling fireball
+  define(scene, 'green-fly', 'green-fly', 8, -1)
+  define(scene, 'green-glide', 'green-glide', 8, -1)
+  define(scene, 'red-fly', 'red-fly', 8, -1)
+  define(scene, 'red-glide', 'red-glide', 8, -1)
+  define(scene, 'fireball', 'fireball', 12, -1)
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {
