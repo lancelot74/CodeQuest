@@ -74,7 +74,7 @@ const GRASS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 16, 18, 21, 33]
 // Pickable heroes. The four platformer heroes are animated 32px sheets; Knight and
 // Golem are single-frame hunt-pack images (faked locomotion via a squash bob).
 // 'anim' heroes play `${key}-run/-idle`; 'static' heroes just bob + flip.
-const HEROES = [
+export const HEROES = [
   { key: 'ninja', label: 'FROG', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
   { key: 'pink', label: 'PINK', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
   { key: 'mask', label: 'MASK', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },

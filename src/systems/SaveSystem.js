@@ -13,7 +13,7 @@ function defaultSave() {
     progress: { clearedLevels: [], unlockedWorlds: ['matlab'] },
     codex: { unlockedLessons: [] },
     settings: { musicVol: 0.85, sfxVol: 0.45, muted: false },
-    hunt: { bestRound: 1 },
+    hunt: { bestRound: 1, dawn: false },
   }
 }
 
