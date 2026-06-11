@@ -96,29 +96,43 @@ export default class MainMenuScene extends Phaser.Scene {
       })
     }
 
-    // drifting clouds: calm grey faces on quiet nights, one trailing a rain
-    // curtain; the blood moon turns them into the angry storm breed
-    this.clouds = [
-      { spr: this.add.sprite(GAME_WIDTH * 0.2, 74, 'cloud1').setScale(1.2).setDepth(1), rain: true },
-      { spr: this.add.sprite(GAME_WIDTH * 0.55, 42, 'cloud1').setScale(0.9).setDepth(1), rain: false },
+    // drifting clouds: calm grey faces on quiet nights, two trailing rain
+    // curtains that fall all the way to the forest floor; the blood moon turns
+    // the whole flock into the angry storm breed
+    const DEFS = [
+      { fx: 0.14, y: 80, scale: 2.2, rain: true },
+      { fx: 0.36, y: 46, scale: 1.6, rain: false },
+      { fx: 0.6, y: 88, scale: 1.9, rain: false },
+      { fx: 0.85, y: 44, scale: 1.5, rain: true },
     ]
-    for (const c of this.clouds) {
-      c.spr.play('cloud1')
+    this.clouds = DEFS.map((d) => {
+      const spr = this.add.sprite(GAME_WIDTH * d.fx, d.y, 'cloud1').setScale(d.scale).setDepth(1)
+      spr.play('cloud1')
       this.tweens.add({
-        targets: c.spr,
-        x: c.spr.x + Phaser.Math.Between(40, 70),
+        targets: spr,
+        x: spr.x + Phaser.Math.Between(40, 80),
         yoyo: true,
         repeat: -1,
-        duration: Phaser.Math.Between(7000, 11000),
+        duration: Phaser.Math.Between(8000, 13000),
         ease: 'Sine.easeInOut',
       })
-      if (c.rain) {
-        c.fx = this.add.sprite(c.spr.x, c.spr.y + 26, 'cloud-rain').setScale(1.2).setAlpha(0.75).setDepth(1)
-        c.fx.play('cloud-rain')
-        // the curtain hangs from the cloud as it drifts
-        this.events.on('update', () => c.fx.setPosition(c.spr.x, c.spr.y + 26))
+      const c = { spr, scale: d.scale, fx: [] }
+      if (d.rain) {
+        // stack curtain segments from under the cloud down to the strip, so the
+        // rain actually lands instead of stopping mid-sky
+        const segH = 48 * d.scale
+        for (let yy = d.y + segH * 0.7; yy < GAME_HEIGHT - 26; yy += segH) {
+          const seg = this.add.sprite(spr.x, yy, 'cloud-rain').setScale(d.scale).setAlpha(0.7).setDepth(1)
+          seg.play('cloud-rain')
+          c.fx.push(seg)
+        }
       }
-    }
+      return c
+    })
+    // curtains hang from their clouds as they drift
+    this.events.on('update', () => {
+      for (const c of this.clouds) for (const seg of c.fx) seg.setX(c.spr.x)
+    })
 
     // blood moon layer: an identical red moon + a red wash over the whole scene,
     // crossfaded in and out on a slow cycle (mirrors the night.bloodMoon event)
@@ -157,7 +171,10 @@ export default class MainMenuScene extends Phaser.Scene {
       this.time.delayedCall(dur, () => {
         if (this.moonPhase !== 'blood') return
         const c = Phaser.Utils.Array.GetRandom(this.clouds)
-        const bolt = this.add.sprite(c.spr.x, c.spr.y + 34, 'cloud-lightning').setScale(1.2).setDepth(1)
+        const bolt = this.add
+          .sprite(c.spr.x, c.spr.y + 48 * c.scale, 'cloud-lightning')
+          .setScale(c.scale, c.scale * 1.8) // stretched so the strike reaches down
+          .setDepth(1)
         bolt.play('cloud-lightning')
         bolt.once('animationcomplete', () => bolt.destroy())
         this.cameras.main.flash(120, 255, 240, 180)

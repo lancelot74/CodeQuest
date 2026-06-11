@@ -4,6 +4,22 @@ import { SaveSystem } from '../systems/SaveSystem.js'
 import { nightBackdrop, panelButton, button, pixelText, drawSenseIcon } from '../ui/widgets.js'
 import { HERO_CARDS } from './GameSelect.js'
 import { SENSES } from '../systems/Hunter.js'
+import { showLessonCard } from '../ui/domOverlay.js'
+
+// Almanac card for the briefing's RULES button: every night event and weather
+// cloud, written as the code the game itself announces them in.
+const NIGHT_ALMANAC = {
+  title: "THE NIGHT'S RULES",
+  body:
+    'From round 2 on, a night event can rewrite the rules, and weather clouds can roll in over the hero at any moment. Every rule in force is listed in the top-right corner during play.',
+  code: `night.bloodMoon = true  // wary hunters - chests open 2x faster
+night.silence   = true  // quiet feet, but stones barely carry
+night.starfall  = true  // falling flashes reveal anyone
+night.feast     = true  // double food - eating is LOUD
+night.hivemind  = true  // one rage wakes the whole pack
+cloud.rain      = true  // fast feet + food, but draws hunters
+cloud.storm     = true  // run before the bolt drops`,
+}
 
 // One briefing page per mode, reached from the GAME hub. Hero picking lives HERE
 // (single home): hunt offers the full roster, story only the animated heroes.
@@ -45,6 +61,9 @@ export default class ModePageScene extends Phaser.Scene {
       this.buildSenseLegend()
       const best = SaveSystem.data.hunt.bestRound
       if (best > 1) pixelText(this, GAME_WIDTH / 2, 276, `save.bestRound = ${best}  — beat it`, 8, '#7ab8ff')
+      // events + weather get the same treatment the senses do — explained in the
+      // calm of the briefing, in the game's own code-speak
+      panelButton(this, GAME_WIDTH / 2 + 164, 306, 'RULES', () => showLessonCard(NIGHT_ALMANAC, undefined, 'NIGHT ALMANAC'), { size: 9, width: 104 })
     }
 
     panelButton(this, GAME_WIDTH / 2, 306, 'PLAY', () => this.scene.start(info.play), { width: 160 })
