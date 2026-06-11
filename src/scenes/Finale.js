@@ -162,6 +162,134 @@ export default class FinaleScene extends Phaser.Scene {
     // entry logic in later tasks
   }
 
+  // kinds: 'lob' (catchable), 'fan' (catchable only when opts.catchable),
+  // 'gift' (the scripted first catch — harmless), 'thrown' (the hero's shot)
+  spawnFireball(x, y, vx, vy, kind, catchable) {
+    const spr = this.add.sprite(x, y, 'fireball').setDepth(950).setScale(1.2)
+    spr.play('fireball')
+    if (!catchable && kind !== 'thrown') spr.setTint(0x9a4040) // dark fire can't be caught
+    const f = { spr, vx, vy, kind, catchable, t: 0, ttl: 4 }
+    this.fireballs.push(f)
+    return f
+  }
+
+  killFireball(f) {
+    const i = this.fireballs.indexOf(f)
+    if (i >= 0) this.fireballs.splice(i, 1)
+    this.tweens.killTweensOf(f.spr)
+    f.spr.destroy()
+  }
+
+  updateFireballs(dt) {
+    for (const f of [...this.fireballs]) {
+      f.t += dt
+      f.spr.x += f.vx * dt
+      f.spr.y += f.vy * dt
+      if (f.kind === 'thrown') {
+        if (this.dragon && !this.dragon.dead && Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.dragon.x, this.dragon.y) < 30) {
+          CombatSystem.puff(this, f.spr.x, f.spr.y, 0xffa64a, 950)
+          this.killFireball(f)
+          this.dragon.hurtByEmber()
+          continue
+        }
+      } else if (f.kind !== 'gift') {
+        const d = Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.player.x, this.player.y)
+        if (d < 16) {
+          CombatSystem.puff(this, f.spr.x, f.spr.y, 0xffa64a, 950)
+          this.killFireball(f)
+          this.playerHit()
+          continue
+        }
+      }
+      if (f.t > f.ttl || f.spr.x < -40 || f.spr.x > WORLD_W + 40 || f.spr.y < -40 || f.spr.y > WORLD_H + 40) {
+        this.killFireball(f)
+      }
+    }
+  }
+
+  // One button, three decisions: E catches a near catchable fireball; held, the
+  // ember orbits as a one-hit shield; E again throws it — the only damage source.
+  handleEmber(dt) {
+    const pressed = this.keys.E.isDown || TouchState.attackL
+    const edge = pressed && !this._prevE
+    this._prevE = pressed
+    if (this.ember) {
+      this._orbitA = (this._orbitA || 0) + dt * 5
+      this.ember.setPosition(this.player.x + Math.cos(this._orbitA) * EMBER_ORBIT, this.player.y - 8 + Math.sin(this._orbitA) * EMBER_ORBIT)
+      this.ember.setDepth(this.player.y + 1)
+      if (edge) this.throwEmber()
+      return
+    }
+    if (!edge || !this.canCatch) return
+    let best = null
+    let bd = CATCH_RADIUS
+    for (const f of this.fireballs) {
+      if (!f.catchable || f.kind === 'thrown') continue
+      const d = Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.player.x, this.player.y)
+      if (d < bd) {
+        bd = d
+        best = f
+      }
+    }
+    if (!best) return
+    this.killFireball(best)
+    this.ember = this.add.sprite(this.player.x, this.player.y - 8, 'fireball').setDepth(this.player.y + 1).setScale(1.2)
+    this.ember.play('fireball')
+    Audio.play(this, SFX.clear, { volume: 0.5, rate: 1.3 })
+    CombatSystem.puff(this, this.player.x, this.player.y - 8, 0xffd24a, 950)
+  }
+
+  throwEmber() {
+    const e = this.ember
+    this.ember = null
+    let vx = this.faceX * THROW_SPEED
+    let vy = 0
+    if (this.dragon && !this.dragon.dead) {
+      const ang = Math.atan2(this.dragon.y - e.y, this.dragon.x - e.x)
+      vx = Math.cos(ang) * THROW_SPEED
+      vy = Math.sin(ang) * THROW_SPEED
+    }
+    const f = this.spawnFireball(e.x, e.y, vx, vy, 'thrown', false)
+    f.ttl = 2
+    e.destroy()
+    Audio.play(this, SFX.slash, { rate: 0.8 })
+  }
+
+  // The held ember eats exactly one killing blow.
+  consumeShield() {
+    if (!this.ember) return false
+    CombatSystem.puff(this, this.ember.x, this.ember.y, 0xffd24a, 950)
+    this.ember.destroy()
+    this.ember = null
+    Audio.play(this, SFX.crit, { volume: 0.6 })
+    this.flashBanner('shield spent!', '#ffd24a')
+    return true
+  }
+
+  playerHit() {
+    if (this.gameOver) return
+    if (this.consumeShield()) return
+    this.die()
+  }
+
+  die() {
+    this.gameOver = true
+    this.player.body.setVelocity(0, 0)
+    if (this.hero.kind === 'anim') this.player.play(`${this.heroKey}-idle`)
+    Audio.play(this, SFX.playerDie)
+    Music.play(this, 'bgm-trap', { fade: 400 })
+    CombatSystem.shake(this, 0.012, 320)
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
+    pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 34, 'BURNED', 26, '#ff8a3c').setScrollFactor(0).setDepth(11001)
+    pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 4, this.reachedArena ? 'retry from the arena door' : 'retry the descent', 8, '#cdd7ee').setScrollFactor(0).setDepth(11001)
+    const retry = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 28, 'RETRY', () => this.scene.restart({ hero: this.heroKey, fromArena: this.reachedArena }), { width: 150, depth: 11001 })
+    const menu = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 64, 'MAIN MENU', () => this.scene.start('MainMenu'), { width: 150, depth: 11001 })
+    for (const b of [retry, menu]) {
+      b.bg.setScrollFactor(0)
+      b.text.setScrollFactor(0)
+    }
+  }
+
   buildFog() {
     this.fogColor = 0x04050c
     this.fog = this.add.renderTexture(0, 0, GAME_WIDTH, GAME_HEIGHT).setOrigin(0, 0).setScrollFactor(0).setDepth(900)
@@ -254,6 +382,8 @@ export default class FinaleScene extends Phaser.Scene {
     this.handlePlayer(dt)
     this.sealDoorsBehind()
     this.updateStages()
+    this.handleEmber(dt)
+    this.updateFireballs(dt)
     this.drawStamina()
     this.updateFog()
   }
