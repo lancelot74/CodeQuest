@@ -256,7 +256,45 @@ export default class FinaleScene extends Phaser.Scene {
     }
   }
 
-  startDawn() {} // replaced in the dawn task
+  // The night ends. Fog warms from black to morning, Roll Credits plays, and
+  // the save remembers: dawn unlocks the Endless Night and the FINALE button.
+  startDawn() {
+    this.stage = 'dawn'
+    this.gameOver = true // freezes update(); updateFog still runs each frame
+    this.player.body.setVelocity(0, 0)
+    if (this.hero.kind === 'anim') this.player.play(`${this.heroKey}-idle`)
+    const hunt = SaveSystem.data.hunt
+    hunt.dawn = true
+    SaveSystem.save()
+    Music.stop(this, { fade: 800 })
+    if (this.cache.audio.exists('cue-dawn')) {
+      const cue = this.sound.add('cue-dawn', { volume: 0.8 })
+      cue.play()
+      this.events.once('shutdown', () => cue.destroy())
+    }
+    // fog warms to morning
+    const c0 = Phaser.Display.Color.ValueToColor(this.fogColor)
+    const c1 = Phaser.Display.Color.ValueToColor(0x8a93c8)
+    const mix = { t: 0 }
+    this.tweens.add({
+      targets: mix,
+      t: 100,
+      duration: 4000,
+      onUpdate: () => {
+        const c = Phaser.Display.Color.Interpolate.ColorWithColor(c0, c1, 100, mix.t)
+        this.fogColor = Phaser.Display.Color.GetColor(c.r, c.g, c.b)
+      },
+    })
+    this.time.delayedCall(3000, () => {
+      this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x10142a, 0.55).setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
+      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 44, 'DAWN', 28, '#ffe066').setScrollFactor(0).setDepth(11001)
+      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 12, 'save.dawn = true', 9, '#7ab8ff').setScrollFactor(0).setDepth(11001)
+      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 6, 'the ENDLESS NIGHT is open', 8, '#8ea0c0').setScrollFactor(0).setDepth(11001)
+      const menu = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 44, 'MAIN MENU', () => this.scene.start('MainMenu'), { width: 170, depth: 11001 })
+      menu.bg.setScrollFactor(0)
+      menu.text.setScrollFactor(0)
+    })
+  }
   // A burning barrier across the lane: the throw lesson. One ember burns it away.
   buildBramble() {
     const x = BRAMBLE_X

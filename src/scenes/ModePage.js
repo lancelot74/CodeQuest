@@ -64,6 +64,10 @@ export default class ModePageScene extends Phaser.Scene {
       // events + weather get the same treatment the senses do — explained in the
       // calm of the briefing, in the game's own code-speak
       panelButton(this, GAME_WIDTH / 2 + 164, 306, 'RULES', () => showLessonCard(NIGHT_ALMANAC, undefined, 'NIGHT ALMANAC'), { size: 9, width: 104 })
+      // dawn earned: the lair stays open for refights
+      if (SaveSystem.data.hunt.dawn) {
+        panelButton(this, GAME_WIDTH / 2 - 164, 306, 'FINALE', () => this.scene.start('Finale'), { size: 9, width: 104 })
+      }
     }
 
     panelButton(this, GAME_WIDTH / 2, 306, 'PLAY', () => this.scene.start(info.play), { width: 160 })

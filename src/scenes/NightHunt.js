@@ -1073,6 +1073,15 @@ export default class NightHuntScene extends Phaser.Scene {
       if (!e.open || e.reached) continue
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) < EXIT_RADIUS) {
         if (e.isFinal) {
+          // clearing round 5 leads down into the lair — until dawn is earned;
+          // afterwards the rounds run on into the Endless Night
+          if (this.round === 5 && !SaveSystem.data.hunt.dawn) {
+            const hunt = SaveSystem.data.hunt
+            hunt.bestRound = Math.max(hunt.bestRound, 6)
+            SaveSystem.save()
+            this.scene.start('Finale', { hero: this.heroKey })
+            return
+          }
           this.roundCleared()
           return
         }
