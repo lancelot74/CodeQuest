@@ -34,10 +34,10 @@ const CORR_BOT = 228 // ...so the hero can't stray; the arena opens back up
 // Difficulty: the catch window shrinks (kill distance is 16) and the dragons gain
 // embers as the night darkens. Chosen at the lair entrance; retries keep the pick.
 const DIFFICULTIES = {
-  easy: { label: 'EASY', catch: 45, hpBonus: 0, color: '#7cfc98' },
-  normal: { label: 'NORMAL', catch: 38, hpBonus: 2, color: '#cdd7ee' },
-  hard: { label: 'HARD', catch: 33, hpBonus: 4, color: '#ffa64a' },
-  nightmare: { label: 'NIGHTMARE', catch: 28, hpBonus: 6, color: '#ff3b3b' },
+  easy: { label: 'EASY', catch: 45, hpBonus: 0, tele: 8, color: '#7cfc98' },
+  normal: { label: 'NORMAL', catch: 38, hpBonus: 2, tele: 14, color: '#cdd7ee' },
+  hard: { label: 'HARD', catch: 33, hpBonus: 4, tele: 20, color: '#ffa64a' },
+  nightmare: { label: 'NIGHTMARE', catch: 28, hpBonus: 6, tele: 28, color: '#ff3b3b' },
 }
 
 const EMBER_ORBIT = 24
@@ -231,7 +231,7 @@ export default class FinaleScene extends Phaser.Scene {
 
     this._atkT -= dt
     if (this._atkT <= 0) {
-      this._atkT = d.color === 'green' ? 2.4 : this.stage === 'rage' ? 1.6 : 2.8
+      this._atkT = d.color === 'green' ? 2.4 : this.stage === 'rage' ? 1.35 : 2.3
       const ang = Math.atan2(this.player.y - d.y, this.player.x - d.x)
       Audio.play(this, SFX.spit, { rate: 0.7 })
       if (d.color === 'green') {
@@ -253,7 +253,7 @@ export default class FinaleScene extends Phaser.Scene {
   runSwoop(d) {
     d.swooping = true
     const y = this.player.y
-    const tele = this.add.rectangle(this.cameras.main.scrollX + GAME_WIDTH / 2, y, GAME_WIDTH, 4, 0xff6a4a, 0.5).setDepth(930)
+    const tele = this.add.rectangle(this.cameras.main.scrollX + GAME_WIDTH / 2, y, GAME_WIDTH, DIFFICULTIES[this.diffKey].tele, 0xff6a4a, 0.5).setDepth(930)
     this.tweens.add({ targets: tele, alpha: 0.1, yoyo: true, repeat: 3, duration: 100 })
     Audio.play(this, SFX.crit, { volume: 0.4, rate: 0.7 })
     this.time.delayedCall(800, () => {
