@@ -104,7 +104,8 @@ export default class MainMenuScene extends Phaser.Scene {
         spr: this.add.sprite(Phaser.Math.Between(30, GAME_WIDTH - 30), Phaser.Math.Between(36, 92), 'cloud1').setDepth(1),
         scale: Phaser.Math.FloatBetween(1.4, 2.3),
         vx: Phaser.Math.FloatBetween(6, 16) * (Math.random() < 0.5 ? -1 : 1),
-        rain: i % 2 === 0,
+        rain: Math.random() < 0.5,
+        rainT: Phaser.Math.FloatBetween(6, 18), // each cloud showers on its own clock
         fx: [],
       }
       c.spr.setScale(c.scale).play('cloud1')
@@ -188,6 +189,12 @@ export default class MainMenuScene extends Phaser.Scene {
     const dt = delta / 1000
     for (const c of this.clouds) {
       c.spr.x += c.vx * dt
+      // every cloud showers and dries on its own independent timer
+      c.rainT -= dt
+      if (c.rainT <= 0) {
+        c.rainT = Phaser.Math.FloatBetween(6, 18)
+        this.setRain(c, !c.rain)
+      }
       const half = 24 * c.scale + 12
       if ((c.vx > 0 && c.spr.x > GAME_WIDTH + half) || (c.vx < 0 && c.spr.x < -half)) {
         // fully out: re-enter from the opposite edge as a new cloud
@@ -199,6 +206,23 @@ export default class MainMenuScene extends Phaser.Scene {
         if (c.rain) this.buildRainCurtain(c)
       }
       for (const seg of c.fx) seg.setX(c.spr.x)
+    }
+  }
+
+  // Toggle a cloud's shower: rain fades in fresh, or the curtain lingers a beat
+  // and dissolves (it stops following the cloud, like rain trailing off behind).
+  setRain(c, on) {
+    c.rain = on
+    if (on) {
+      this.buildRainCurtain(c)
+      for (const s of c.fx) {
+        s.setAlpha(0)
+        this.tweens.add({ targets: s, alpha: 0.7, duration: 900 })
+      }
+    } else {
+      const old = c.fx
+      c.fx = []
+      for (const s of old) this.tweens.add({ targets: s, alpha: 0, duration: 900, onComplete: () => s.destroy() })
     }
   }
 
