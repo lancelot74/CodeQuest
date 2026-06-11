@@ -7,6 +7,7 @@ import { SaveSystem } from '../systems/SaveSystem.js'
 import { TouchState } from '../systems/TouchState.js'
 import { showTouchControls, hideTouchControls } from '../ui/touchControls.js'
 import Hunter, { SENSES, SKINS } from '../systems/Hunter.js'
+import { ensureHuntLights, LIGHT_RADIUS, SMALL_LIGHT, TORCH_LIGHT } from '../utils/lights.js'
 
 const TILE = 24
 const WORLD_COLS = 50
@@ -16,9 +17,6 @@ const WORLD_H = WORLD_ROWS * TILE // 816
 
 const WALK_SPEED = 96
 const SPRINT_SPEED = 168
-const LIGHT_RADIUS = 104 // player light WITH a torch
-const SMALL_LIGHT = 30 // player light without a torch (immediate surroundings only)
-const TORCH_LIGHT = 80 // ambient pool cast by a map torch
 const TENSION_HOLD = 5.5 // keep the tension track this long after the hunter leaves sight
 const DEATH_TENSION_HOLD = 3.5 // on a catch, hold the tension loop this long before easing back
 const OBJ_RADIUS = 34
@@ -216,7 +214,7 @@ export default class NightHuntScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
 
-    this.makeLights()
+    ensureHuntLights(this)
     this.buildFog()
     this.buildHud()
 
@@ -1331,26 +1329,6 @@ export default class NightHuntScene extends Phaser.Scene {
   }
 
   // ---- darkness -------------------------------------------------------------
-  makeLights() {
-    this.makeLight('hunt-light', LIGHT_RADIUS, 1)
-    this.makeLight('hunt-light-sm', SMALL_LIGHT, 0.85)
-    this.makeLight('hunt-torch-light', TORCH_LIGHT, 0.9)
-  }
-
-  makeLight(key, radius, peak) {
-    if (this.textures.exists(key)) return
-    const d = radius * 2
-    const c = this.textures.createCanvas(key, d, d)
-    const ctx = c.getContext()
-    const g = ctx.createRadialGradient(radius, radius, radius * 0.12, radius, radius, radius)
-    g.addColorStop(0, `rgba(255,255,255,${peak})`)
-    g.addColorStop(0.62, `rgba(255,255,255,${peak * 0.82})`)
-    g.addColorStop(1, 'rgba(255,255,255,0)')
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, d, d)
-    c.refresh()
-  }
-
   buildFog() {
     this.fog = this.add.renderTexture(0, 0, GAME_WIDTH, GAME_HEIGHT).setOrigin(0, 0).setScrollFactor(0).setDepth(900)
     if (this.textures.exists('vignette')) {
