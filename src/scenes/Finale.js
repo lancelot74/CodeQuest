@@ -132,6 +132,11 @@ export default class FinaleScene extends Phaser.Scene {
     })
   }
 
+  updatePips() {} // real body in the arena task
+  onDragonDown() {} // real body in the arena task
+  onDragonHurt() {} // real body in the arena task
+  buildBramble() {} // real body in the bramble task
+
   sealDoorsBehind() {
     for (const d of this.doors) {
       if (!d.sealed && this.player.x > d.x + 24) {
@@ -155,11 +160,64 @@ export default class FinaleScene extends Phaser.Scene {
     }
   }
 
+  // The green strafes along the top wall and lobs a fireball at the hero as it
+  // passes. In corridor 1 the hero can only dodge; in corridor 2 (post-gift)
+  // the same fireballs are practice ammunition.
+  runStrafe() {
+    const fromLeft = Math.random() < 0.5
+    const startX = this.cameras.main.scrollX + (fromLeft ? -50 : GAME_WIDTH + 50)
+    const d = this.add.sprite(startX, LANE_TOP - 14, 'green-glide').setScale(2).setDepth(945).setFlipX(fromLeft)
+    d.play('green-glide')
+    Audio.play(this, SFX.spit, { rate: 0.5, volume: 0.7 })
+    this.tweens.add({
+      targets: d,
+      x: startX + (fromLeft ? 1 : -1) * (GAME_WIDTH + 100),
+      duration: 2400,
+      onUpdate: () => {
+        if (!d._fired && Math.abs(d.x - this.player.x) < 30) {
+          d._fired = true
+          const ang = Math.atan2(this.player.y - d.y, this.player.x - d.x)
+          this.spawnFireball(d.x, d.y + 10, Math.cos(ang) * LOB_SPEED, Math.sin(ang) * LOB_SPEED, 'lob', true)
+        }
+      },
+      onComplete: () => d.destroy(),
+    })
+  }
+
+  updateGift() {
+    const f = this._giftBall
+    if (!f) return
+    // close in, then hover and wait for the catch
+    if (Phaser.Math.Distance.Between(f.spr.x, f.spr.y, this.player.x, this.player.y) < 60) {
+      f.vx = 0
+      f.spr.y += Math.sin(this.time.now / 200) * 0.3
+    }
+    this.prompt.setPosition(this.player.x, this.player.y - 30)
+    if (!this.fireballs.includes(f)) {
+      // it was caught — the Emberhand is awake
+      this._giftBall = null
+      this.prompt.setVisible(false)
+      this.startStage('corridor2')
+    }
+  }
+
   startStage(name) {
     this.stage = name
-    if (name === 'corridor1') this.flashBanner('something flies above', '#8ea0c0')
-    // 'gift', 'corridor2', 'arena1', 'arena2', 'rage' and 'dawn' get their
-    // entry logic in later tasks
+    if (name === 'corridor1') {
+      this.flashBanner('something flies above', '#8ea0c0')
+      this._strafeT = 1.5
+    } else if (name === 'gift') {
+      // the scripted first catch: one slow, harmless fireball that waits for E
+      this.canCatch = true
+      const f = this.spawnFireball(this.player.x + 220, this.player.y, -LOB_SPEED * 0.25, 0, 'gift', true)
+      f.ttl = 999
+      this._giftBall = f
+      this.prompt.setText('PRESS E').setVisible(true)
+    } else if (name === 'corridor2') {
+      this.flashBanner('hero.catch = true', '#ffd24a')
+      this.buildBramble()
+      this._strafeT = 3
+    }
   }
 
   // kinds: 'lob' (catchable), 'fan' (catchable only when opts.catchable),
@@ -382,9 +440,42 @@ export default class FinaleScene extends Phaser.Scene {
     this.handlePlayer(dt)
     this.sealDoorsBehind()
     this.updateStages()
+    if ((this.stage === 'corridor1' || this.stage === 'corridor2') && (this._strafeT -= dt) <= 0) {
+      this._strafeT = this.stage === 'corridor1' ? 3.5 : 4.5
+      this.runStrafe()
+    }
+    if (this.stage === 'gift') this.updateGift()
     this.handleEmber(dt)
     this.updateFireballs(dt)
     this.drawStamina()
     this.updateFog()
+  }
+}
+
+// A lair dragon: pattern-driven flight (the scene moves it), no physics body.
+// hurtByEmber() is the only damage path; hp is measured in returned embers.
+class Dragon extends Phaser.GameObjects.Sprite {
+  constructor(scene, color, x, y, hp) {
+    super(scene, x, y, `${color}-fly`)
+    scene.add.existing(this)
+    this.color = color
+    this.hp = hp
+    this.dead = false
+    this.setScale(2.4).setDepth(940)
+    this.play(`${color}-fly`)
+  }
+
+  hurtByEmber() {
+    if (this.dead) return
+    this.hp--
+    this.setTintFill(0xffffff)
+    this.scene.time.delayedCall(80, () => {
+      if (this.active && !this.dead) this.clearTint()
+    })
+    Audio.play(this.scene, SFX.enemyHit, { volume: 0.9 })
+    CombatSystem.shake(this.scene, 0.005, 100)
+    this.scene.updatePips()
+    if (this.hp <= 0) this.scene.onDragonDown(this)
+    else this.scene.onDragonHurt(this)
   }
 }
