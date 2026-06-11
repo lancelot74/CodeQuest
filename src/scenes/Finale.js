@@ -266,9 +266,11 @@ export default class FinaleScene extends Phaser.Scene {
       this.tweens.add({
         targets: d,
         x: d.x + (fromLeft ? 1 : -1) * (GAME_WIDTH + 120),
-        duration: 900,
-        onUpdate: () => {
-          if (!this.gameOver && Math.abs(d.x - this.player.x) < 26 && Math.abs(y - this.player.y) < 22) this.playerHit()
+        duration: 760,
+        onUpdate: (tw) => {
+          // the dash weaves: three zigzags around the telegraphed lane
+          d.y = y - 6 + Math.sin(tw.progress * Math.PI * 6) * 34
+          if (!this.gameOver && Math.abs(d.x - this.player.x) < 26 && Math.abs(d.y - this.player.y) < 26) this.playerHit()
         },
         onComplete: () => {
           if (!d.active || d.dead) return
