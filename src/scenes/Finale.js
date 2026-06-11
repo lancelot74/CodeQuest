@@ -63,6 +63,8 @@ export default class FinaleScene extends Phaser.Scene {
     this.fireballs = []
     this.dragon = null
     this.torches = []
+    this.bramble = null
+    this.brambleBits = []
     this._prevE = false
     this.stamina = STAM_MAX
     this.exhausted = false
