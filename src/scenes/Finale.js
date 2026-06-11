@@ -28,8 +28,10 @@ const STAM_FLOOR = 0.25
 const DOOR_X = [240, 600, 960]
 const GIFT_X = 560 // the first-catch beat triggers here
 const BRAMBLE_X = 900
+const CORR_TOP = 132 // the pre-arena stretch squeezes to this lane...
+const CORR_BOT = 228 // ...so the hero can't stray; the arena opens back up
 
-const CATCH_RADIUS = 28
+const CATCH_RADIUS = 40 // tight-ish: the kill distance is 16, this is the skill window
 const EMBER_ORBIT = 24
 const THROW_SPEED = 280
 const LOB_SPEED = 150
@@ -69,7 +71,6 @@ export default class FinaleScene extends Phaser.Scene {
     this._prevE = false
     this.stamina = STAM_MAX
     this.exhausted = false
-    this.faceX = 1
 
     this.physics.world.setBounds(0, LANE_TOP, WORLD_W, LANE_BOT - LANE_TOP)
     ensureHuntLights(this)
@@ -107,6 +108,12 @@ export default class FinaleScene extends Phaser.Scene {
       this.add.image(x, LANE_TOP - 4, 'hunt-tree').setOrigin(0.5, 1).setDepth(LANE_TOP).setTint(0x5a6488)
       this.add.image(x + 10, WORLD_H + 2, 'hunt-tree').setOrigin(0.5, 1).setDepth(WORLD_H).setTint(0x5a6488)
     }
+
+    // corridor edges: dense tree rows mark the squeezed lane up to the arena door
+    for (let x = 14; x < DOOR_X[2]; x += 30) {
+      this.add.image(x, CORR_TOP + 4, 'hunt-tree').setOrigin(0.5, 1).setDepth(CORR_TOP + 4).setTint(0x3c4666)
+      this.add.image(x + 15, CORR_BOT + 46, 'hunt-tree').setOrigin(0.5, 1).setDepth(CORR_BOT + 46).setTint(0x3c4666)
+    }
   }
 
   buildPlayer() {
@@ -127,12 +134,21 @@ export default class FinaleScene extends Phaser.Scene {
   // through, the body enables and the way back is sealed.
   buildDoors() {
     this.doors = DOOR_X.map((x) => {
-      const slab = this.add.rectangle(x, (LANE_TOP + LANE_BOT) / 2, 12, LANE_BOT - LANE_TOP, 0x05060d, 0.95).setDepth(800).setVisible(false)
+      // invisible blocker — the visible seal is a row of trees grown on the spot
+      const slab = this.add.rectangle(x, (LANE_TOP + LANE_BOT) / 2, 12, LANE_BOT - LANE_TOP, 0x000000, 0)
       this.physics.add.existing(slab, true)
       slab.body.enable = false
       this.physics.add.collider(this.player, slab)
       return { x, slab, sealed: false }
     })
+
+    // corridor confinement: invisible bands squeeze the pre-arena stretch to the
+    // CORR lane; past the last door the arena keeps the full height
+    for (const [top, bot] of [[LANE_TOP, CORR_TOP], [CORR_BOT, LANE_BOT]]) {
+      const band = this.add.rectangle(DOOR_X[2] / 2, (top + bot) / 2, DOOR_X[2], bot - top, 0x000000, 0)
+      this.physics.add.existing(band, true)
+      this.physics.add.collider(this.player, band)
+    }
   }
 
   // Standing torch ring: the first fully lit space in the game — until the rage.
@@ -302,7 +318,7 @@ export default class FinaleScene extends Phaser.Scene {
   buildBramble() {
     const x = BRAMBLE_X
     this.brambleBits = []
-    for (let y = LANE_TOP + 14; y < LANE_BOT; y += 26) {
+    for (let y = CORR_TOP + 10; y < CORR_BOT + 14; y += 26) {
       const bit = this.add.image(x, y, 'hunt-tree').setScale(0.8).setOrigin(0.5, 0.7).setDepth(y).setTint(0xb3543a)
       this.tweens.add({ targets: bit, alpha: 0.75, yoyo: true, repeat: -1, duration: 420 })
       this.brambleBits.push(bit)
@@ -332,8 +348,12 @@ export default class FinaleScene extends Phaser.Scene {
       if (this._giftBall && d.x === DOOR_X[2]) continue
       if (!d.sealed && this.player.x > d.x + 24) {
         d.sealed = true
-        d.slab.setVisible(true)
         d.slab.body.enable = true
+        // the forest closes the way behind: a column of trees grows across the lane
+        for (let y = CORR_TOP + 10; y < CORR_BOT + 18; y += 22) {
+          const tr = this.add.image(d.x, y, 'hunt-tree').setOrigin(0.5, 0.8).setDepth(y).setTint(0x46527a).setScale(0)
+          this.tweens.add({ targets: tr, scale: 0.9, duration: 280, ease: 'Back.out' })
+        }
         Audio.play(this, SFX.heavy, { volume: 0.5, rate: 0.6 })
       }
     }
@@ -510,17 +530,12 @@ export default class FinaleScene extends Phaser.Scene {
     CombatSystem.puff(this, this.player.x, this.player.y - 8, 0xffd24a, 950)
   }
 
+  // Sling throw: the ember flies outward along its current orbit angle — release
+  // timing IS the aim, like loosing a stone from a sling.
   throwEmber() {
     const e = this.ember
     this.ember = null
-    let vx = this.faceX * THROW_SPEED
-    let vy = 0
-    if (this.dragon && !this.dragon.dead) {
-      const ang = Math.atan2(this.dragon.y - e.y, this.dragon.x - e.x)
-      vx = Math.cos(ang) * THROW_SPEED
-      vy = Math.sin(ang) * THROW_SPEED
-    }
-    const f = this.spawnFireball(e.x, e.y, vx, vy, 'thrown', false)
+    const f = this.spawnFireball(e.x, e.y, Math.cos(this._orbitA) * THROW_SPEED, Math.sin(this._orbitA) * THROW_SPEED, 'thrown', false)
     f.ttl = 2
     e.destroy()
     Audio.play(this, SFX.slash, { rate: 0.8 })
@@ -641,7 +656,6 @@ export default class FinaleScene extends Phaser.Scene {
       const l = Math.hypot(ax, ay)
       ax /= l
       ay /= l
-      this.faceX = ax || this.faceX
       if (Math.abs(ax) > 0.02) this.player.flipX = ax < 0
     }
     this.player.body.setVelocity(ax * speed, ay * speed)

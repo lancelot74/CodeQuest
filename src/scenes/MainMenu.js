@@ -16,9 +16,10 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
-    // dev shortcut: localhost:5173/#finale jumps straight to the lair
-    if (window.location.hash === '#finale') {
-      this.scene.start('Finale')
+    // dev shortcuts: #finale jumps straight to the lair, #arena skips the
+    // corridors and drops you at the dragon fight with the catch already granted
+    if (window.location.hash === '#finale' || window.location.hash === '#arena') {
+      this.scene.start('Finale', { fromArena: window.location.hash === '#arena' })
       return
     }
     nightBackdrop(this, { treeline: false }) // the vignette below brings its own forest
