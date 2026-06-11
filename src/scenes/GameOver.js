@@ -3,6 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { COLORS } from '../utils/constants.js'
 import { ContentLoader } from '../systems/ContentLoader.js'
 import { addBackdrop, pixelText, button } from '../ui/widgets.js'
+import { Music } from '../systems/AudioSystem.js'
 
 export default class GameOverScene extends Phaser.Scene {
   constructor() {
@@ -15,6 +16,7 @@ export default class GameOverScene extends Phaser.Scene {
   }
 
   create() {
+    Music.play(this, 'bgm-main') // resume the menu loop after a (silent) level
     const world = new ContentLoader(this).world(this.worldId)
     addBackdrop(this, world?.bg || 'bg-green', 0.72)
 

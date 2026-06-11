@@ -3,6 +3,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { ContentLoader } from '../systems/ContentLoader.js'
 import { addBackdrop, button, pixelText } from '../ui/widgets.js'
+import { Music } from '../systems/AudioSystem.js'
 
 export default class LevelSelectScene extends Phaser.Scene {
   constructor() {
@@ -14,6 +15,7 @@ export default class LevelSelectScene extends Phaser.Scene {
   }
 
   create() {
+    Music.play(this, 'bgm-main') // resume the menu loop after a (silent) level
     const content = new ContentLoader(this)
     const world = content.world(this.worldId)
     addBackdrop(this, world?.bg || 'bg-green')

@@ -21,6 +21,9 @@ const CSS = `
   border-radius:4px;padding:10px 18px;cursor:pointer}
 .cq-btn:hover{background:#fff0a0}
 .cq-hint{font-size:10px;color:#8ea0c0;margin-left:14px}
+.cq-opt{display:block;width:100%;text-align:left;margin:0 0 10px;background:#223052;color:#eaf1ff}
+.cq-opt:hover{background:#2e4070}
+.cq-opt.cq-wrong{background:#7a2f33;color:#ffd9d9;cursor:default}
 `
 
 const TOKEN =
@@ -60,6 +63,39 @@ export function hideOverlay() {
     overlayEl.remove()
     overlayEl = null
   }
+}
+
+// Multiple-choice code question over the canvas. Wrong answers turn red and stay
+// on screen (retry teaches); the right one closes the card and reports whether it
+// was found on the first try, so callers can scale rewards.
+export function showQuestionCard(q, onDone, badge = 'CODE QUESTION') {
+  ensureStyles()
+  hideOverlay()
+
+  const el = document.createElement('div')
+  el.className = 'cq-overlay'
+  const opts = q.options.map((o, i) => `<button class="cq-btn cq-opt" data-i="${i}">${esc(o)}</button>`).join('')
+  el.innerHTML = `
+    <div class="cq-card" role="dialog" aria-modal="true">
+      <div class="cq-badge">${esc(badge)}</div>
+      <h2 class="cq-title">${esc(q.prompt)}</h2>
+      ${opts}
+    </div>`
+  document.body.appendChild(el)
+  overlayEl = el
+
+  let firstTry = true
+  el.querySelectorAll('.cq-opt').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (Number(btn.dataset.i) !== q.answer) {
+        btn.classList.add('cq-wrong')
+        firstTry = false
+        return
+      }
+      hideOverlay()
+      onDone?.(firstTry)
+    })
+  })
 }
 
 export function showLessonCard(lesson, onClose, badge = 'LESSON UNLOCKED') {

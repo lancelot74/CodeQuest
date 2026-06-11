@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 import { CombatSystem } from './CombatSystem.js'
 import { Audio, SFX } from './AudioSystem.js'
 
-// Buyable units for the Age of War sub-game. Costs are fixed (15/25/25/50);
+// Buyable units for the Age of War sub-game. Costs are fixed (15/25/35/50);
 // stats scale with cost without equalling it. Slime is a procedural placeholder
 // (melee only); the other three reuse the platformer enemy sprites.
 export const UNIT_TYPES = {
@@ -17,9 +17,9 @@ export const UNIT_TYPES = {
     ranged: true, tint: 0xb060ff, scale: 0.78, projTint: 0xc77bff, killReward: 12,
   },
   mage: {
-    label: 'MAGE', cost: 25, walk: 'mage-walk', death: 'mage-death',
+    label: 'MAGE', cost: 35, walk: 'mage-walk', death: 'mage-death',
     hp: 38, attack: 15, range: 150, cooldown: 1500, speed: 38,
-    ranged: true, tint: 0xffffff, scale: 0.62, projTint: 0x7ad6ff, killReward: 12,
+    ranged: true, tint: 0xffffff, scale: 0.62, projTint: 0x7ad6ff, killReward: 16,
     special: 'volley', specialCd: 3200, specialRange: 150, specialDmg: 11, // signature three-bolt fan
   },
   demon: {
@@ -93,6 +93,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
     }
 
     this.x += this.dir * this.cfg.speed * (delta / 1000)
+    this.setFlipX(this.dir > 0) // back to march-facing once nothing's in reach
     if (this.anims.currentAnim?.key !== this.cfg.walk) this.play(this.cfg.walk, true)
   }
 
@@ -100,12 +101,13 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
     return this.nearestFoeWithin(foes, this.cfg.range)
   }
 
+  // A foe in range is attackable from EITHER side — a demon that leaps past the
+  // front line (or a knocked-back unit) must not go blind to what's behind it.
   nearestFoeWithin(foes, maxDist) {
     let best = null
     let bestDist = Infinity
     for (const o of foes) {
       if (!o || o.dead || !o.active) continue
-      if ((o.x - this.x) * this.dir <= 0) continue // must be ahead
       const dist = Math.abs(o.x - this.x)
       if (dist <= maxDist && dist < bestDist) {
         best = o
@@ -118,6 +120,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
   blockedByFriend(friends) {
     for (const f of friends) {
       if (f === this || !f || f.dead || !f.active) continue
+      if (f.cfg.ranged && !this.cfg.ranged) continue // melee push past the firing line
       const ahead = (f.x - this.x) * this.dir
       if (ahead > 0 && ahead < SPACING) return true
     }
@@ -131,6 +134,7 @@ export default class WarUnit extends Phaser.GameObjects.Sprite {
   }
 
   attackUnit(target) {
+    this.setFlipX(target.x > this.x) // face what you fight, even behind you
     if (this.cfg.ranged) {
       this.scene.spawnWarProjectile(this, target)
       Audio.play(this.scene, SFX.spit)

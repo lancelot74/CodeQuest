@@ -4,6 +4,7 @@ import { addBackdrop, panelButton, pixelText } from '../ui/widgets.js'
 import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import WarUnit, { UNIT_TYPES } from '../systems/WarUnit.js'
+import { showQuestionCard, hideOverlay } from '../ui/domOverlay.js'
 
 const GROUND_Y = 300
 const BASE_MAX_HP = 300
@@ -51,8 +52,35 @@ export default class AgeOfWarScene extends Phaser.Scene {
     pixelText(this, GAME_WIDTH / 2, 16, 'AGE OF WAR', 12, '#ffe066')
     this.coinText = pixelText(this, 12, 14, 'COINS 100', 9, '#ffe066').setOrigin(0, 0.5)
 
+    // the advertised loop: answer a code prompt for a gold burst, on a cooldown —
+    // the sim pauses under the card so it stays a thinking moment, not a tax
+    this.quizOpen = false
+    this.quizCdUntil = 0
+    this.quizBtn = panelButton(this, 168, 16, 'QUIZ +GOLD', () => this.openQuiz(), { size: 8, width: 116 })
+
     this.buildBuyBar()
     panelButton(this, GAME_WIDTH - 40, 16, 'MENU', () => this.scene.start('MainMenu'), { size: 8, width: 64 })
+    this.events.once('shutdown', () => hideOverlay())
+  }
+
+  openQuiz() {
+    if (this.gameOver || this.quizOpen || this.time.now < this.quizCdUntil) return
+    const qs = this.cache.json.get('questions') || []
+    if (!qs.length) return
+    // difficulty ramps with the match clock, mirroring the AI's own ramp
+    const maxDiff = 1 + Math.floor(this.aiElapsed / 45)
+    const pool = qs.filter((q) => q.difficulty <= maxDiff)
+    const q = Phaser.Utils.Array.GetRandom(pool.length ? pool : qs)
+    this.quizOpen = true
+    showQuestionCard(q, (firstTry) => {
+      this.quizOpen = false
+      this.quizCdUntil = this.time.now + 10000
+      const reward = firstTry ? 20 + 15 * (q.difficulty || 1) : 5
+      this.playerCoins += reward
+      Audio.play(this, firstTry ? SFX.clear : SFX.click, { volume: 0.6 })
+      const t = pixelText(this, 168, 34, `+${reward}`, 9, firstTry ? '#7cfc98' : '#8ea0c0')
+      this.tweens.add({ targets: t, y: 24, alpha: 0, duration: 900, onComplete: () => t.destroy() })
+    })
   }
 
   buildBase(x, color, side) {
@@ -71,15 +99,18 @@ export default class AgeOfWarScene extends Phaser.Scene {
     const totalW = keys.length * bw + (keys.length - 1) * gap
     let x = GAME_WIDTH / 2 - totalW / 2 + bw / 2
     this.buyButtons = []
-    for (const k of keys) {
+    keys.forEach((k, i) => {
       const cfg = UNIT_TYPES[k]
-      const btn = panelButton(this, x, GAME_HEIGHT - 22, `${cfg.label} ${cfg.cost}`, () => this.buyUnit(k), {
+      const btn = panelButton(this, x, GAME_HEIGHT - 26, `[${i + 1}] ${cfg.label} ${cfg.cost}`, () => this.buyUnit(k), {
         size: 8,
         width: bw,
+        height: 34, // taller touch target
       })
       this.buyButtons.push({ key: k, cfg, btn, affordable: true })
       x += bw + gap
-    }
+    })
+    // number-key hotkeys mirror the [n] labels
+    ;['ONE', 'TWO', 'THREE', 'FOUR'].forEach((kc, i) => this.input.keyboard.on('keydown-' + kc, () => this.buyUnit(keys[i])))
   }
 
   buyUnit(type) {
@@ -90,8 +121,7 @@ export default class AgeOfWarScene extends Phaser.Scene {
       return
     }
     this.playerCoins -= cfg.cost
-    this.spawnUnit(type, 'player')
-    Audio.play(this, SFX.click)
+    this.spawnUnit(type, 'player') // panelButton's pointerup click already covers the SFX
   }
 
   spawnUnit(type, side) {
@@ -246,6 +276,7 @@ export default class AgeOfWarScene extends Phaser.Scene {
   killProj(orb) {
     const i = this.projectiles.indexOf(orb)
     if (i >= 0) this.projectiles.splice(i, 1)
+    this.tweens.killTweensOf(orb) // the repeat:-1 spin tween outlives destroy()
     if (orb.active) orb.destroy()
   }
 
@@ -275,10 +306,15 @@ export default class AgeOfWarScene extends Phaser.Scene {
     add('spitter', t > 10 ? 3 : 1)
     add('mage', t > 20 ? 3 : 1)
     add('demon', t > 30 ? 3 : 0)
+    const idx = Math.floor((t * 7.13 + this.enemyCoins * 0.37) % pool.length)
+    const want = pool[idx]
+    if (this.enemyCoins >= UNIT_TYPES[want].cost) return want
+    // wanted a demon but can't afford it: skip the buy and bank for it, so the
+    // late-game ramp actually arrives instead of being spent on chaff
+    if (want === 'demon') return null
     const affordable = pool.filter((k) => this.enemyCoins >= UNIT_TYPES[k].cost)
     if (!affordable.length) return null
-    const idx = Math.floor((t * 7.13 + this.enemyCoins * 0.37) % affordable.length)
-    return affordable[idx]
+    return affordable[Math.floor((t * 7.13) % affordable.length)]
   }
 
   runAi(time, dtSec) {
@@ -295,16 +331,20 @@ export default class AgeOfWarScene extends Phaser.Scene {
   endGame(won) {
     if (this.gameOver) return
     this.gameOver = true
+    for (const orb of [...this.projectiles]) this.killProj(orb) // nothing spins under the overlay
     Audio.play(this, won ? SFX.clear : SFX.playerDie)
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.7).setOrigin(0, 0).setDepth(20)
+    // setInteractive makes the dimmer a modal blocker: the buy bar and MENU under
+    // it stop reacting; RESTART/MAIN MENU at depth 21 sit above and keep working
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.7).setOrigin(0, 0).setDepth(20).setInteractive()
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, won ? 'VICTORY' : 'DEFEAT', 24, won ? '#ffe066' : '#e06a6a').setDepth(21)
     panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 16, 'RESTART', () => this.scene.restart(), { width: 150, depth: 21 })
     panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 52, 'MAIN MENU', () => this.scene.start('MainMenu'), { width: 150, depth: 21 })
   }
 
   update(time, delta) {
-    if (this.gameOver) return
+    if (this.gameOver || this.quizOpen) return // the battle waits while you think
     const dtSec = delta / 1000
+    this.quizBtn.text.setText(this.time.now >= this.quizCdUntil ? 'QUIZ +GOLD' : 'QUIZ ' + Math.ceil((this.quizCdUntil - this.time.now) / 1000))
 
     this.incomeAccum += INCOME_RATE * dtSec
     while (this.incomeAccum >= 1) {
@@ -329,7 +369,9 @@ export default class AgeOfWarScene extends Phaser.Scene {
 
     for (const b of this.buyButtons) {
       const ok = this.playerCoins >= b.cfg.cost
-      if (ok !== b.affordable) {
+      // re-assert, not just on change: panelButton's hover-out clearTint() would
+      // otherwise wipe the disabled look until coins cross the threshold again
+      if (ok !== b.affordable || (!ok && b.btn.bg.tintTopLeft !== 0x6d7790)) {
         b.affordable = ok
         if (ok) {
           b.btn.bg.clearTint()

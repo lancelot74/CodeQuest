@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH } from '../config.js'
 import { SaveSystem, xpForLevel } from '../systems/SaveSystem.js'
-import { pixelText, uiPanel } from '../ui/widgets.js'
+import { pixelText, uiPanel, button } from '../ui/widgets.js'
 
 // Overlay scene launched on top of Game. Polls live state each frame rather
 // than subscribing to cross-scene events — simpler and leak-free on restart.
@@ -22,9 +22,11 @@ export default class HUDScene extends Phaser.Scene {
     this.add.rectangle(49, 25, 42, 4, 0x141a2c).setOrigin(0, 0.5).setStrokeStyle(1, 0x39456a)
     this.xpFill = this.add.rectangle(50, 25, 1, 2, 0x7cfc98).setOrigin(0, 0.5)
 
-    // objective on a matching panel (top-right)
+    // objective on a matching panel (top-right), with a way OUT under it — the only
+    // exits used to be dying or clearing
     uiPanel(this, GAME_WIDTH - 4, 4, 150, 20, { frame: 3, originX: 1, originY: 0 })
     this.objText = pixelText(this, GAME_WIDTH - 14, 14, '', 7, '#e8eefc').setOrigin(1, 0.5)
+    button(this, GAME_WIDTH - 30, 40, 'EXIT', () => this.gameScene.scene.start('LevelSelect', { worldId: this.gameScene.worldId }), { size: 7 })
   }
 
   update() {

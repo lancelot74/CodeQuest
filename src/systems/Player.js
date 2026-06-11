@@ -149,7 +149,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const coyote = time - this.lastGroundedAt <= COYOTE_MS
     if (buffered) {
       if (this.jumpsUsed === 0 && (onGround || coyote || this.leftLadderGrace)) this.doJump(false)
-      else if (this.jumpsUsed >= 1 && this.jumpsUsed < MAX_JUMPS) this.doJump(true)
+      // walked off a ledge past the coyote window: the ground jump is gone, but the
+      // air jump must still answer — eating the input entirely reads as unfair
+      else if (this.jumpsUsed < MAX_JUMPS) this.doJump(true)
     }
 
     // Variable jump height: releasing while rising cuts the ascent.
@@ -304,7 +306,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   doJump(isDouble) {
     this.setVelocityY(-JUMP_V)
-    this.jumpsUsed = isDouble ? this.jumpsUsed + 1 : 1
+    // an air jump from a ledge fall (jumpsUsed 0) consumes the ground jump too,
+    // so falling never grants more total jumps than jumping
+    this.jumpsUsed = isDouble ? Math.max(this.jumpsUsed, 1) + 1 : 1
     this.jumpCutAvailable = true
     this.leftLadderGrace = false
     this.lastJumpAt = -1e9

@@ -9,10 +9,10 @@ import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { TERRAIN_THEMES, TILE } from '../utils/tiles.js'
 import { heroKit } from '../utils/constants.js'
 import { pixelText } from '../ui/widgets.js'
-import { showLessonCard } from '../ui/domOverlay.js'
+import { showLessonCard, showQuestionCard, hideOverlay } from '../ui/domOverlay.js'
 import { showTouchControls, hideTouchControls, isTouchDevice } from '../ui/touchControls.js'
 
-const XP_PER_SLIME = 8
+const XP_BY_TYPE = { ooze: 8, mage: 10, demon: 14 } // tougher foes pay better
 const CAM_ZOOM = 0.8 // gameplay camera pull-back; backdrop sizing depends on this
 
 export default class GameScene extends Phaser.Scene {
@@ -94,6 +94,12 @@ export default class GameScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.scene.stop('HUD')
       hideTouchControls()
+      hideOverlay() // a death/exit mid-question must not strand the DOM card
+    })
+
+    // quick exit to the level map (HUD has a matching EXIT button for touch)
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (!this.cleared && !this.quizOpen) this.scene.start('LevelSelect', { worldId: this.worldId })
     })
 
     this.showControlsHint()
@@ -117,6 +123,7 @@ export default class GameScene extends Phaser.Scene {
 
   setupObjective() {
     this.cleared = false
+    this.quizOpen = false // scene instances are reused; never carry a stale gate over
     this.objective = this.level.objective || { type: 'reachPortal' }
     if (this.exitPos) {
       this.portalZone = this.add.zone(this.exitPos.x, this.exitPos.y, TILE, TILE * 2)
@@ -142,8 +149,27 @@ export default class GameScene extends Phaser.Scene {
   }
 
   tryClear() {
-    if (this.cleared || !this.objectiveMet()) return
-    this.clearLevel()
+    if (this.cleared || this.quizOpen) return
+    if (!this.objectiveMet()) {
+      // standing on a locked portal: say why it won't open (throttled)
+      if (this.time.now >= (this._lockedHintAt || 0)) {
+        this._lockedHintAt = this.time.now + 1500
+        Audio.play(this, SFX.rollover)
+        const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 44, 'defeat all foes first!', 9, '#ffa64d').setScrollFactor(0).setDepth(50)
+        this.tweens.add({ targets: t, y: GAME_HEIGHT - 64, alpha: 0, duration: 1100, ease: 'Cubic.out', onComplete: () => t.destroy() })
+      }
+      return
+    }
+    // the portal asks one code question — the actual gate of the level. Wrong
+    // answers stay open for another try; only the right one opens the way.
+    const qs = new ContentLoader(this).questionsFor(this.worldId)
+    if (!qs.length) return this.clearLevel()
+    this.quizOpen = true
+    this.player.freeze()
+    showQuestionCard(Phaser.Utils.Array.GetRandom(qs), () => {
+      this.quizOpen = false
+      this.clearLevel()
+    })
   }
 
   clearLevel() {
@@ -154,6 +180,13 @@ export default class GameScene extends Phaser.Scene {
     const lessonId = this.level.lessonId
     SaveSystem.markLevelCleared(this.levelId)
     if (lessonId) SaveSystem.unlockLesson(lessonId)
+
+    // clearing every level of a world unlocks the next authored one
+    const all = this.worldDef?.levels || []
+    if (all.length && all.every((lv) => SaveSystem.isLevelCleared(lv.id))) {
+      const next = new ContentLoader(this).worlds().find((w) => w.order === this.worldDef.order + 1)
+      if (next && next.levels.length) SaveSystem.unlockWorld(next.id)
+    }
     const lesson = lessonId ? new ContentLoader(this).lesson(lessonId) : null
 
     this.cameras.main.flash(180, 124, 252, 152)
@@ -169,9 +202,9 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  onEnemyDied() {
+  onEnemyDied(enemy) {
     Audio.play(this, SFX.enemyDie)
-    const res = SaveSystem.addXp(XP_PER_SLIME)
+    const res = SaveSystem.addXp(XP_BY_TYPE[enemy?.type] ?? 8)
     this.player.maxHp = SaveSystem.data.player.maxHp
     this.player.attackPower = SaveSystem.data.player.attack
     if (res.leveledUp) {
@@ -205,7 +238,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onTouchEnemy(player, enemy) {
-    if (this.cleared || player.dead || enemy.dead) return
+    if (this.cleared || this.quizOpen || player.dead || enemy.dead) return
     const dmg = enemy.lungeActive ? enemy.contactDamage + 6 : enemy.contactDamage
     player.hit(dmg, enemy.x, this.time.now)
   }
@@ -229,7 +262,7 @@ export default class GameScene extends Phaser.Scene {
     const SPEED = 165
     orb.setVelocity(Math.cos(ang) * SPEED, Math.sin(ang) * SPEED)
     this.tweens.add({ targets: orb, angle: 360, duration: 700, repeat: -1 })
-    this.time.delayedCall(2600, () => orb.active && orb.destroy())
+    this.time.delayedCall(2600, () => this.popVenom(orb)) // popVenom also kills the spin tween
     return orb
   }
 
@@ -263,13 +296,13 @@ export default class GameScene extends Phaser.Scene {
     orb.body.setAllowGravity(false)
     orb.body.setCircle(6, 3, 3)
     orb.setVelocity(dir * 150, 0)
-    this.time.delayedCall(1400, () => orb.active && orb.destroy())
+    this.time.delayedCall(1400, () => this.popVenom(orb))
     return orb
   }
 
   onVenomHit(player, orb) {
     if (orb.friendly) return // reflected/cast orbs don't hurt the player
-    if (this.cleared || player.dead) return this.popVenom(orb)
+    if (this.cleared || this.quizOpen || player.dead) return this.popVenom(orb)
     player.hit(orb.dmg || 10, orb.x, this.time.now)
     this.popVenom(orb)
   }
@@ -326,6 +359,7 @@ export default class GameScene extends Phaser.Scene {
   popVenom(orb) {
     if (!orb || !orb.active) return
     CombatSystem.puff(this, orb.x, orb.y, orb.popTint || 0x9be86a)
+    this.tweens.killTweensOf(orb) // the repeat:-1 spin tween outlives destroy()
     orb.destroy()
   }
 
@@ -594,6 +628,13 @@ export default class GameScene extends Phaser.Scene {
         } else if (ch === 'H') {
           this.add.image(px, py, 'ladder').setTint(theme.ladderTint).setDepth(2)
           this.ladderSet.add(`${c},${r}`)
+          // cap a ladder hole in a floor with an invisible one-way so running across
+          // doesn't drop you a storey; climbers phase through it (oneWayProcess)
+          if (solid(c - 1, r) && solid(c + 1, r)) {
+            const cap = this.oneways.create(px, py, 'terrain', theme.oneway)
+            cap.setVisible(false)
+            cap.refreshBody()
+          }
         } else if (ch === 'P') {
           this.spawn = { x: px, y: py }
         } else if (ch === 'O') {

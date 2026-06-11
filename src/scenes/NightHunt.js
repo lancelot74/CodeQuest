@@ -486,7 +486,6 @@ export default class NightHuntScene extends Phaser.Scene {
   checkTraps() {
     if (this.trapped || this.frozen || this._trapGrace > 0) return
     for (const ho of this.holes) {
-      if (ho.used) continue
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, ho.x, ho.y) < 16) {
         this.trapped = true
         this.trapEscapes = 0
@@ -502,11 +501,7 @@ export default class NightHuntScene extends Phaser.Scene {
   freeFromTrap() {
     this.trapped = false
     this._trapGrace = 1.0 // step-off grace so you don't instantly re-trigger
-    if (this.trapHole) {
-      this.trapHole.used = true
-      this.trapHole.gfx.setFillStyle(0x2a2418, 0.9).setStrokeStyle(2, 0x3a3322) // filled-in dirt
-      this.trapHole = null
-    }
+    this.trapHole = null // the hole stays open — wander back in and it bites again
     CombatSystem.puff(this, this.player.x, this.player.y, 0xb6c2d8)
     Audio.play(this, SFX.levelUp, { volume: 0.5 })
     this.flashBanner('FREE!', '#7cfc98')
@@ -839,7 +834,7 @@ export default class NightHuntScene extends Phaser.Scene {
   placeHoles() {
     for (const pt of this.spreadPoints(NUM_HOLES, 200, 150)) {
       const gfx = this.add.ellipse(pt.x, pt.y, 34, 22, 0x04050a, 0.95).setStrokeStyle(2, 0x141a2a).setDepth(3)
-      this.holes.push({ x: pt.x, y: pt.y, gfx, used: false })
+      this.holes.push({ x: pt.x, y: pt.y, gfx })
     }
   }
 
