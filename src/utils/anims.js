@@ -22,6 +22,12 @@ export function createEnemyAnimations(scene) {
   define(scene, 'mage-walk', 'mage-walk', 9, -1)
   define(scene, 'mage-death', 'mage-death', 10, 0)
   define(scene, 'eyeball-walk', 'eyeball-walk', 6, -1)
+  // weather clouds (menu + Night Hunt): bodies + rain loop, one-shot bolt
+  define(scene, 'cloud1', 'cloud1', 6, -1)
+  define(scene, 'cloud2', 'cloud2', 6, -1)
+  define(scene, 'cloud-rain', 'cloud-rain', 14, -1)
+  define(scene, 'cloud-effect', 'cloud-effect', 10, -1)
+  define(scene, 'cloud-lightning', 'cloud-lightning', 14, 0)
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {

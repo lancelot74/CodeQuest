@@ -45,6 +45,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('eyeball-walk', 'assets/game/enemies/eyeball/walk.png', { frameWidth: 20, frameHeight: 20 })
     this.load.image('eye-bullet', 'assets/game/enemies/eyeball/bullet.png')
 
+    // Weather clouds (48px strips): calm + storm bodies, rain curtain, crackle, bolt.
+    const CLOUD = { frameWidth: 48, frameHeight: 48 }
+    this.load.spritesheet('cloud1', 'assets/game/clouds/cloud1.png', CLOUD)
+    this.load.spritesheet('cloud2', 'assets/game/clouds/cloud2.png', CLOUD)
+    this.load.spritesheet('cloud-rain', 'assets/game/clouds/rain.png', CLOUD)
+    this.load.spritesheet('cloud-effect', 'assets/game/clouds/effect.png', CLOUD)
+    this.load.spritesheet('cloud-lightning', 'assets/game/clouds/lightning.png', CLOUD)
+
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
     const HUNT = 'assets/game/hunt'

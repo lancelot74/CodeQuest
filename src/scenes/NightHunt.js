@@ -36,6 +36,18 @@ const WAVE_SPEED = 180
 const HOMING_SPEED = 150 // ooze spit — deliberately slow so it can be outrun
 const SNIPE_SPEED = 260 // eyeball bolt — fastest shot, but a single straight line
 
+// weather clouds: roll in on a timer and park directly on the hero, above the fog.
+// The rain cloud is a blessing with a price (fast feet + food, but the patter draws
+// hunters); the storm cloud is a death sentence with a dodge window.
+const CLOUD_GAP_MIN = 20
+const CLOUD_GAP_MAX = 35
+const RAIN_TIME = 8
+const RAIN_SPEED = 1.2 // hero speed multiplier under the shower
+const RAIN_FEED = 0.05 // hunger refilled per second of rain
+const BOLT_FOLLOW = 1.2 // the storm tracks the hero this long...
+const BOLT_WARN = 1.0 // ...then crackles over a locked spot — your window to run
+const BOLT_RADIUS = 22
+
 // hunger: drains slowly every round; emptied it slows the hero. Food refills it.
 const HUNGER_MAX = 1
 const HUNGER_DRAIN = 0.025 // ~40s from full to starving
@@ -193,6 +205,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.bannerEls = []
     this._dryRounds = 0
     this.flashes = []
+    this.cloud = null
+    this._cloudT = Phaser.Math.FloatBetween(12, 22)
     this.resetModifiers()
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
@@ -350,6 +364,7 @@ export default class NightHuntScene extends Phaser.Scene {
     }
     let speed = (sprint ? SPRINT_SPEED : WALK_SPEED) * this.moveMul
     if (this.hunger <= 0) speed *= STARVE_SLOW
+    if (this.cloud?.kind === 'rain') speed *= RAIN_SPEED // fresh rain, fast feet
     if (moving) {
       const l = Math.hypot(ax, ay)
       ax /= l
@@ -706,6 +721,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.fogColor = this.nightEvent?.fog ?? 0x05060a
     this.flashes = []
     this._starT = Phaser.Math.FloatBetween(4, 7)
+    this.killCloud()
+    this._cloudT = Phaser.Math.FloatBetween(12, 22)
 
     // chests grow from round 2 on; exits from round 3 on (round-1 of them)
     this.chestCount = 3 + Math.max(0, this.round - 1)
@@ -1233,6 +1250,86 @@ export default class NightHuntScene extends Phaser.Scene {
     })
   }
 
+  // ---- weather clouds ---------------------------------------------------------
+  // Clouds park directly on the hero and render above the fog — weather doesn't
+  // care about the dark. 50/50 rain or storm, announced on the HUD weather line.
+  spawnCloud() {
+    const kind = Math.random() < 0.5 ? 'rain' : 'storm'
+    const x = this.player.x
+    const y = this.player.y - 54
+    const spr = this.add.sprite(x, y, kind === 'rain' ? 'cloud1' : 'cloud2').setDepth(955).setScale(1.3)
+    spr.play(kind === 'rain' ? 'cloud1' : 'cloud2')
+    let fx
+    if (kind === 'rain') {
+      fx = this.add.sprite(x, y + 30, 'cloud-rain').setDepth(954).setScale(1.3).setAlpha(0.8)
+      fx.play('cloud-rain')
+      Audio.play(this, SFX.rollover, { volume: 0.6, rate: 0.7 })
+    } else {
+      fx = this.add.sprite(x, y, 'cloud-effect').setDepth(956).setScale(1.3)
+      fx.play('cloud-effect')
+      Audio.play(this, SFX.crit, { volume: 0.4, rate: 0.6 })
+    }
+    this.cloud = { kind, spr, fx, t: 0, pulse: 0, lockX: x, lockY: this.player.y, struck: false }
+    const label = kind === 'rain' ? 'cloud.rain = true' : 'cloud.storm = true'
+    const color = kind === 'rain' ? '#7ad6ff' : '#ffd24a'
+    this.cloudHud.setText(label).setColor(color).setVisible(true)
+    this.flashBanner(label, color)
+  }
+
+  updateClouds(dt) {
+    if (!this.cloud) {
+      this._cloudT -= dt
+      if (this._cloudT <= 0) this.spawnCloud()
+      return
+    }
+    const c = this.cloud
+    c.t += dt
+    if (c.kind === 'rain') {
+      // the shower follows the hero: faster feet, a fed belly — and a patter every
+      // hunter nearby can't help investigating
+      c.spr.setPosition(this.player.x, this.player.y - 54)
+      c.fx.setPosition(this.player.x, this.player.y - 24)
+      this.hunger = Math.min(HUNGER_MAX, this.hunger + RAIN_FEED * dt)
+      c.pulse -= dt
+      if (c.pulse <= 0) {
+        c.pulse = 1.5
+        for (const h of this.hunters) {
+          if (Phaser.Math.Distance.Between(h.x, h.y, this.player.x, this.player.y) < 300) h.distract(this.player.x, this.player.y)
+        }
+      }
+      if (c.t >= RAIN_TIME) this.killCloud()
+      return
+    }
+    // storm: tracks the hero for a beat, locks, crackles — then the bolt falls
+    if (c.t < BOLT_FOLLOW) {
+      c.lockX = this.player.x
+      c.lockY = this.player.y
+      c.spr.setPosition(c.lockX, c.lockY - 54)
+      c.fx.setPosition(c.lockX, c.lockY - 54)
+    } else if (!c.struck && c.t >= BOLT_FOLLOW + BOLT_WARN) {
+      c.struck = true
+      const bolt = this.add.sprite(c.lockX, c.lockY - 26, 'cloud-lightning').setDepth(954).setScale(1.3)
+      bolt.play('cloud-lightning')
+      bolt.once('animationcomplete', () => bolt.destroy())
+      Audio.play(this, SFX.crit, { volume: 0.8, rate: 1.1 })
+      this.cameras.main.flash(110, 255, 240, 180)
+      CombatSystem.shake(this, 0.008, 160)
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, c.lockX, c.lockY) < BOLT_RADIUS) this.playerDeath()
+    } else if (c.t >= BOLT_FOLLOW + BOLT_WARN + 0.5) {
+      this.killCloud()
+    }
+  }
+
+  killCloud() {
+    if (this.cloud) {
+      this.cloud.spr.destroy()
+      this.cloud.fx.destroy()
+      this.cloud = null
+    }
+    if (this.cloudHud) this.cloudHud.setVisible(false)
+    this._cloudT = Phaser.Math.FloatBetween(CLOUD_GAP_MIN, CLOUD_GAP_MAX)
+  }
+
   // ---- darkness -------------------------------------------------------------
   makeLights() {
     this.makeLight('hunt-light', LIGHT_RADIUS, 1)
@@ -1293,6 +1390,8 @@ export default class NightHuntScene extends Phaser.Scene {
     this.senseIcon = this.add.graphics().setScrollFactor(0).setDepth(9501)
     this.senseText = pixelText(this, GAME_WIDTH - 12, 32, '', 7, '#cdd7ee').setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
     this.modEls = [] // per-round rules column rebuilt under the sense icons
+    // live weather line under the rules — set while a cloud is parked on the hero
+    this.cloudHud = pixelText(this, GAME_WIDTH - 12, 46, '', 6, '#7ad6ff').setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501).setVisible(false)
     // enraged-chase countdown — only shown while a hunter is actively chasing
     // sits below the chest + exit pip rows
     this.rageText = pixelText(this, GAME_WIDTH / 2, 54, '', 11, '#ff3b3b').setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(9502).setVisible(false)
@@ -1439,6 +1538,7 @@ export default class NightHuntScene extends Phaser.Scene {
         pixelText(this, GAME_WIDTH - 12, 46 + i * 11, r.text, 6, r.color).setOrigin(1, 0.5).setScrollFactor(0).setDepth(9501)
       )
     })
+    this.cloudHud.setY(46 + rows.length * 11) // weather slots in right below the rules
   }
 
   // ---- banners + overlays ---------------------------------------------------
@@ -1504,6 +1604,7 @@ export default class NightHuntScene extends Phaser.Scene {
     if (this.trapText) this.trapText.setVisible(false)
     this.player.body.setVelocity(0, 0)
     this.restPose()
+    this.killCloud() // no weather over the death overlay
     // update() bails on gameOver but arcade physics keeps stepping — without this the
     // hunters glide on their last velocity under the death overlay
     for (const h of this.hunters) h.body.setVelocity(0, 0)
@@ -1571,6 +1672,7 @@ export default class NightHuntScene extends Phaser.Scene {
     for (const h of this.hunters) h.think(dt)
     this.updateRageHud()
     this.updateStarfall(dt)
+    this.updateClouds(dt)
     this.updateProjectiles(dt)
     this.handleObjectives(dt)
     this.handleExit()

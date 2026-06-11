@@ -96,6 +96,30 @@ export default class MainMenuScene extends Phaser.Scene {
       })
     }
 
+    // drifting clouds: calm grey faces on quiet nights, one trailing a rain
+    // curtain; the blood moon turns them into the angry storm breed
+    this.clouds = [
+      { spr: this.add.sprite(GAME_WIDTH * 0.2, 74, 'cloud1').setScale(1.2).setDepth(1), rain: true },
+      { spr: this.add.sprite(GAME_WIDTH * 0.55, 42, 'cloud1').setScale(0.9).setDepth(1), rain: false },
+    ]
+    for (const c of this.clouds) {
+      c.spr.play('cloud1')
+      this.tweens.add({
+        targets: c.spr,
+        x: c.spr.x + Phaser.Math.Between(40, 70),
+        yoyo: true,
+        repeat: -1,
+        duration: Phaser.Math.Between(7000, 11000),
+        ease: 'Sine.easeInOut',
+      })
+      if (c.rain) {
+        c.fx = this.add.sprite(c.spr.x, c.spr.y + 26, 'cloud-rain').setScale(1.2).setAlpha(0.75).setDepth(1)
+        c.fx.play('cloud-rain')
+        // the curtain hangs from the cloud as it drifts
+        this.events.on('update', () => c.fx.setPosition(c.spr.x, c.spr.y + 26))
+      }
+    }
+
     // blood moon layer: an identical red moon + a red wash over the whole scene,
     // crossfaded in and out on a slow cycle (mirrors the night.bloodMoon event)
     this.bloodMoon = [
@@ -125,6 +149,20 @@ export default class MainMenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.fullMoon, alpha: crescent ? 0 : 1, duration: dur, ease })
     this.tweens.add({ targets: this.crescent, alpha: crescent ? 1 : 0, duration: dur, ease })
     this.tweens.add({ targets: this.moonHalo, alpha: crescent ? 0.1 : 0.22, duration: dur, ease })
+
+    // the clouds turn with the moon: angry storm faces under blood, and one of
+    // them spits a bolt as the red settles in
+    for (const c of this.clouds) c.spr.play(blood ? 'cloud2' : 'cloud1')
+    if (blood) {
+      this.time.delayedCall(dur, () => {
+        if (this.moonPhase !== 'blood') return
+        const c = Phaser.Utils.Array.GetRandom(this.clouds)
+        const bolt = this.add.sprite(c.spr.x, c.spr.y + 34, 'cloud-lightning').setScale(1.2).setDepth(1)
+        bolt.play('cloud-lightning')
+        bolt.once('animationcomplete', () => bolt.destroy())
+        this.cameras.main.flash(120, 255, 240, 180)
+      })
+    }
   }
 
   // A hunter silhouette ambles across the strip — footsteps swell as it nears the
