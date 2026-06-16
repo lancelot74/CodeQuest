@@ -16,7 +16,7 @@ import AgeOfWarScene from './scenes/AgeOfWar.js'
 import NightHuntScene from './scenes/NightHunt.js'
 import FinaleScene from './scenes/Finale.js'
 
-new Phaser.Game(
+const game = new Phaser.Game(
   createConfig([
     BootScene,
     PreloadScene,
@@ -35,3 +35,4 @@ new Phaser.Game(
     FinaleScene,
   ]),
 )
+if (import.meta.env.DEV) window.__game = game

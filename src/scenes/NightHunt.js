@@ -81,6 +81,7 @@ export const HEROES = [
   { key: 'virtual', label: 'VIRTUAL', kind: 'anim', scale: 1.05, origin: 0.72, body: [16, 14], off: [8, 15] },
   { key: 'hunt-hero', label: 'KNIGHT', kind: 'static', scale: 0.62, origin: 0.62, body: [20, 14] },
   { key: 'hunt-golem', label: 'GOLEM', kind: 'static', scale: 0.95, origin: 0.62, body: [16, 12] },
+  { key: 'hunt-lantern', label: 'WANDERER', kind: 'anim', scale: 0.55, origin: 0.78, body: [18, 16], off: [23, 40] },
 ]
 const TOUCH_LABELS = { jump: 'RUN', attack: 'USE', heavy: null }
 

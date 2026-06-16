@@ -77,7 +77,8 @@ export default class ModePageScene extends Phaser.Scene {
   // Arrow carousel over the roster. Picks persist exactly like the old hub picker:
   // every pick sets the NIGHT HUNT hero; animated picks also become the campaign hero.
   buildHeroCarousel(info) {
-    this.roster = info.hero === 'all' ? HERO_CARDS : HERO_CARDS.filter((h) => h.anim)
+    // hunt shows everyone; story only the animated heroes that aren't hunt-exclusive
+    this.roster = info.hero === 'all' ? HERO_CARDS : HERO_CARDS.filter((h) => h.anim && !h.huntOnly)
     const wanted = this.registry.get('huntHero') || SaveSystem.data.character
     this.idx = Math.max(0, this.roster.findIndex((h) => h.key === wanted))
 
@@ -97,7 +98,8 @@ export default class ModePageScene extends Phaser.Scene {
     this.showHero()
     const h = this.roster[this.idx]
     this.registry.set('huntHero', h.key)
-    if (h.anim) {
+    // hunt-only heroes never become the campaign character
+    if (h.anim && !h.huntOnly) {
       SaveSystem.setCharacter(h.key)
       this.registry.set('character', h.key)
     }
@@ -107,7 +109,7 @@ export default class ModePageScene extends Phaser.Scene {
     const h = this.roster[this.idx]
     if (this.heroSpr) this.heroSpr.destroy()
     if (h.anim) {
-      this.heroSpr = this.add.sprite(this.heroX, this.heroY, `${h.key}-idle`).setScale(2.2)
+      this.heroSpr = this.add.sprite(this.heroX, this.heroY, `${h.key}-idle`).setScale(h.cardScale || 2.2)
       this.heroSpr.play(`${h.key}-idle`)
     } else {
       this.heroSpr = this.add.image(this.heroX, this.heroY, h.key).setScale((h.scale || 1.3) * 1.5)

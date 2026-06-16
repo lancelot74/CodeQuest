@@ -10,6 +10,18 @@ export function createCharacterAnimations(scene) {
     define(scene, `${c}-doublejump`, `${c}-doublejump`, 20, 0)
     define(scene, `${c}-hit`, `${c}-hit`, 20, 0)
   }
+
+  // The Wanderer (hunt-only, 64px). idle loops via yoyo so the gentle sway is
+  // seam-free; run/hit/death are added once their strips exist.
+  if (scene.textures.exists('hunt-lantern-idle') && !scene.anims.exists('hunt-lantern-idle')) {
+    scene.anims.create({
+      key: 'hunt-lantern-idle',
+      frames: scene.anims.generateFrameNumbers('hunt-lantern-idle'),
+      frameRate: 8,
+      repeat: -1,
+      yoyo: true,
+    })
+  }
 }
 
 // Enemy animations (marsh creatures: Ooze, Demon, Mage). Built once, like the

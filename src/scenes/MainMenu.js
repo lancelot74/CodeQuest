@@ -22,6 +22,12 @@ export default class MainMenuScene extends Phaser.Scene {
       this.scene.start('Finale', { fromArena: window.location.hash === '#arena' })
       return
     }
+    // #wanderer drops straight into Night Hunt as the lantern hero (dev/testing)
+    if (window.location.hash === '#wanderer') {
+      this.registry.set('huntHero', 'hunt-lantern')
+      this.scene.start('NightHunt')
+      return
+    }
     nightBackdrop(this, { treeline: false }) // the vignette below brings its own forest
     ensureGlowTexture(this)
     this.buildVignette()

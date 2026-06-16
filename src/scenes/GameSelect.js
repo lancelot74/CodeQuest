@@ -13,6 +13,7 @@ export const HERO_CARDS = [
   { key: 'virtual', label: 'VIRTUAL', anim: true },
   { key: 'hunt-hero', label: 'KNIGHT', anim: false, scale: 1.2 },
   { key: 'hunt-golem', label: 'GOLEM', anim: false, scale: 1.5 },
+  { key: 'hunt-lantern', label: 'WANDERER', anim: true, huntOnly: true, cardScale: 1.1 },
 ]
 
 // The "Game" hub: NIGHT HUNT is the flagship card up top (animated, teaches the
