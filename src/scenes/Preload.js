@@ -23,11 +23,6 @@ export default class PreloadScene extends Phaser.Scene {
       this.load.spritesheet(`${c}-hit`, `assets/game/players/${c}/hit.png`, SHEET)
     }
 
-    this.load.spritesheet('terrain', 'assets/game/tiles/kenney-platformer.png', {
-      frameWidth: 21,
-      frameHeight: 21,
-    })
-
     // Marsh enemies: trimmed boss sheets (uniform bottom-anchored cells, centered).
     const OOZE = { frameWidth: 64, frameHeight: 50 }
     this.load.spritesheet('ooze-walk', 'assets/game/enemies/ooze/walk.png', OOZE)
@@ -88,10 +83,6 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('ui', 'assets/game/ui/kenney-ui.png', { frameWidth: 32, frameHeight: 32 })
     // Kenney UI Pack (Pixel Adventure): blue-grey 9-slice panel for menu/HUD chrome.
     this.load.image('ui-panel', 'assets/game/ui/ui-panel.png')
-    this.load.image('bg-green', 'assets/game/bg/green.png')
-    this.load.image('bg-blue', 'assets/game/bg/blue.png')
-    this.load.image('bg-gray', 'assets/game/bg/gray.png')
-    this.load.image('bg-purple', 'assets/game/bg/purple.png')
 
     // SFX — Kenney ui / impact / rpg packs (ogg). Logical names live in SFX.
     const sfx = (key, path) => this.load.audio(key, `assets/audio/${path}`)
@@ -119,9 +110,6 @@ export default class PreloadScene extends Phaser.Scene {
     mus('bgm-boss', 'final-kill.ogg') // finale arena loop
     mus('cue-dawn', 'roll-credits.ogg') // one-shot over the dawn screen
 
-    this.load.json('worlds', 'data/worlds.json')
-    this.load.json('lessons', 'data/lessons.json')
-    this.load.json('questions', 'data/questions.json')
   }
 
   create() {
