@@ -64,6 +64,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('hunt-lantern-run', 'assets/game/players/hunt-lantern/run.png', LANT)
     this.load.spritesheet('hunt-lantern-hit', 'assets/game/players/hunt-lantern/hit.png', LANT)
     this.load.spritesheet('hunt-lantern-death', 'assets/game/players/hunt-lantern/death.png', LANT)
+    this.load.spritesheet('hunt-lantern-sprint', 'assets/game/players/hunt-lantern/sprint.png', LANT)
 
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).

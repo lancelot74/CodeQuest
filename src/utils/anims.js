@@ -32,6 +32,9 @@ export function createCharacterAnimations(scene) {
   if (scene.textures.exists('hunt-lantern-death') && !scene.anims.exists('hunt-lantern-death')) {
     scene.anims.create({ key: 'hunt-lantern-death', frames: scene.anims.generateFrameNumbers('hunt-lantern-death'), frameRate: 10, repeat: 0 })
   }
+  if (scene.textures.exists('hunt-lantern-sprint') && !scene.anims.exists('hunt-lantern-sprint')) {
+    scene.anims.create({ key: 'hunt-lantern-sprint', frames: scene.anims.generateFrameNumbers('hunt-lantern-sprint'), frameRate: 14, repeat: -1 })
+  }
 }
 
 // Enemy animations (marsh creatures: Ooze, Demon, Mage). Built once, like the

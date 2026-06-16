@@ -382,7 +382,12 @@ export default class NightHuntScene extends Phaser.Scene {
       if (Math.abs(ax) > 0.02) this.player.flipX = ax < 0
     }
     if (this.hero.kind === 'anim') {
-      const want = moving ? `${this.hero.key}-run` : `${this.hero.key}-idle`
+      // sprinting heroes that have a sprint cycle use it; the rest fall back to run
+      const want = !moving
+        ? `${this.hero.key}-idle`
+        : sprint && this.anims.exists(`${this.hero.key}-sprint`)
+          ? `${this.hero.key}-sprint`
+          : `${this.hero.key}-run`
       if (this.player.anims.getName() !== want) this.player.play(want)
     } else {
       // single-frame hero: fake a walk with a vertical squash
