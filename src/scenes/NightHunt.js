@@ -415,6 +415,8 @@ export default class NightHuntScene extends Phaser.Scene {
   // squash — a hero stuck in a hole or frozen solid shouldn't keep running in place.
   restPose() {
     if (this.hero.kind === 'anim') {
+      // a mid-play one-shot reaction (hit) owns the sprite until it finishes
+      if (this.player.anims.isPlaying && this.player.anims.getName() === `${this.heroKey}-hit`) return
       const idle = `${this.heroKey}-idle`
       if (this.player.anims.getName() !== idle) this.player.play(idle)
     } else {
@@ -1659,7 +1661,13 @@ export default class NightHuntScene extends Phaser.Scene {
         this.trapEscapes++
         CombatSystem.puff(this, this.player.x, this.player.y - 6, 0xc98a4a)
         Audio.play(this, SFX.click, { volume: 0.5 })
-        if (this.trapEscapes >= TRAP_PRESSES) this.freeFromTrap()
+        if (this.trapEscapes >= TRAP_PRESSES) {
+          this.freeFromTrap()
+        } else {
+          // each struggle is a flinch — only heroes with a hit anim react (restPose holds it)
+          const hitKey = `${this.heroKey}-hit`
+          if (this.anims.exists(hitKey) && this.player.anims.getName() === `${this.heroKey}-idle`) this.player.play(hitKey)
+        }
       }
     } else if (useBtn && !this._prevUseBtn && !this.nearUnfinishedObjective()) {
       if (this.carried === 'stone') this.throwLure()
