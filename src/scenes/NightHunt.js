@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
-import { pixelText, panelButton, uiPanel, drawSenseIcon } from '../ui/widgets.js'
+import { pixelText, panelButton, uiPanel, drawSenseIcon, setUiMood } from '../ui/widgets.js'
 import { Audio, SFX, Music } from '../systems/AudioSystem.js'
 import { CombatSystem } from '../systems/CombatSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
@@ -1590,6 +1590,7 @@ export default class NightHuntScene extends Phaser.Scene {
   playerDeath() {
     if (this.gameOver) return
     this.gameOver = true
+    setUiMood(this, 'danger') // CAUGHT panels glow blood-red
     this.trapped = false
     if (this.trapText) this.trapText.setVisible(false)
     this.player.body.setVelocity(0, 0)
@@ -1730,5 +1731,7 @@ export default class NightHuntScene extends Phaser.Scene {
     // stuck in a hole the music itself panics; the fast fade sells the drop
     const want = this.trapped ? 'bgm-trap' : this._tensionHold > 0 ? 'bgm-tension' : 'bgm-main'
     Music.play(this, want, { fade: this.trapped ? 350 : 900 })
+    // the UI runes share the dread: blood-red whenever the calm theme isn't playing
+    setUiMood(this, want === 'bgm-main' ? 'calm' : 'danger')
   }
 }
