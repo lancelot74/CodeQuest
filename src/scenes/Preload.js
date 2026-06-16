@@ -66,6 +66,9 @@ export default class PreloadScene extends Phaser.Scene {
     // NIGHT HUNT — the Wanderer: an animated lantern hero (hunt-only, 64px strips).
     const LANT = { frameWidth: 64, frameHeight: 64 }
     this.load.spritesheet('hunt-lantern-idle', 'assets/game/players/hunt-lantern/idle.png', LANT)
+    this.load.spritesheet('hunt-lantern-run', 'assets/game/players/hunt-lantern/run.png', LANT)
+    this.load.spritesheet('hunt-lantern-hit', 'assets/game/players/hunt-lantern/hit.png', LANT)
+    this.load.spritesheet('hunt-lantern-death', 'assets/game/players/hunt-lantern/death.png', LANT)
 
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
