@@ -4,14 +4,24 @@ import { Audio, SFX } from '../systems/AudioSystem.js'
 
 const INSET = 12 // nine-slice corner size — small so tiny buttons stay crisp
 
-// A neutral stone nine-slice with a separately-tinted runes-glow layer on top.
-// The runes layer is registered per scene so setUiMood() can recolour them.
+// Stone nine-slice with a runes-glow overlay glued on top. Returns the stone so
+// callers keep the plain panel API; the runes layer mirrors every transform the
+// caller applies (scroll/depth/alpha/scale/position) so it never orphans into the
+// world. setTint is deliberately NOT mirrored — the stone tints for hover/dim while
+// the runes keep their mood colour, which setUiMood() recolours via the registry.
 function stonePanel(scene, x, y, w, h, ox, oy) {
   const stone = scene.add.nineslice(x, y, 'ui-stone', undefined, w, h, INSET, INSET, INSET, INSET).setOrigin(ox, oy)
   const runes = scene.add.nineslice(x, y, 'ui-runes', undefined, w, h, INSET, INSET, INSET, INSET).setOrigin(ox, oy)
   runes.setTint(RUNE[scene._uiMood || 'calm'])
   ;(scene._uiRunes ||= []).push(runes)
-  return { stone, runes }
+  for (const m of ['setScrollFactor', 'setDepth', 'setAlpha', 'setVisible', 'setScale', 'setPosition', 'setX', 'setY']) {
+    const orig = stone[m].bind(stone)
+    stone[m] = function (...args) {
+      runes[m](...args)
+      return orig(...args)
+    }
+  }
+  return stone
 }
 
 // Recolour every rune layer in a scene (cold blue <-> blood red).
@@ -30,13 +40,10 @@ export function pixelText(scene, x, y, text, size = 10, color = COLORS.text) {
 // Kenney UI Pack (Pixel Adventure) nine-slice panel — blue-grey, 8px borders on
 // the 32px tile. Shared by menu chrome and the HUD.
 export function uiPanel(scene, x, y, w, h, opts = {}) {
-  const { stone, runes } = stonePanel(scene, x, y, w, h, opts.originX ?? 0, opts.originY ?? 0)
+  const stone = stonePanel(scene, x, y, w, h, opts.originX ?? 0, opts.originY ?? 0)
   if (opts.tint != null) stone.setTint(opts.tint)
-  if (opts.depth != null) {
-    stone.setDepth(opts.depth)
-    runes.setDepth(opts.depth)
-  }
-  return stone // callers tint/position the stone; the runes layer follows it
+  if (opts.depth != null) stone.setDepth(opts.depth)
+  return stone
 }
 
 // A button drawn on a Kenney panel. Auto-sizes to the label.
@@ -46,9 +53,8 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
   const t = pixelText(scene, x, y, label, size, opts.color ?? '#eaf1ff')
   const w = opts.width ?? Math.ceil(t.width + 28)
   const h = opts.height ?? size + 18
-  const { stone: bg, runes } = stonePanel(scene, x, y, w, h, 0.5, 0.5)
+  const bg = stonePanel(scene, x, y, w, h, 0.5, 0.5)
   bg.setDepth(depth)
-  runes.setDepth(depth)
   t.setDepth(depth + 1)
 
   if (opts.disabled) {
@@ -65,12 +71,10 @@ export function panelButton(scene, x, y, label, onClick, opts = {}) {
   bg.on('pointerout', () => bg.clearTint())
   bg.on('pointerdown', () => {
     bg.setScale(0.96)
-    runes.setScale(0.96)
     t.setScale(0.96)
   })
   bg.on('pointerup', () => {
     bg.setScale(1)
-    runes.setScale(1)
     t.setScale(1)
     Audio.play(scene, SFX.click)
     onClick?.()
@@ -171,9 +175,8 @@ export function button(scene, x, y, label, onClick, opts = {}) {
   const t = pixelText(scene, x, y, label, size, color).setDepth(6)
   const w = Math.ceil(t.width + 22)
   const h = size + 14
-  const { stone: bg, runes } = stonePanel(scene, x, y, w, h, 0.5, 0.5)
+  const bg = stonePanel(scene, x, y, w, h, 0.5, 0.5)
   bg.setDepth(5)
-  runes.setDepth(5)
 
   if (opts.disabled) {
     t.setColor('#5a6488')
@@ -193,12 +196,10 @@ export function button(scene, x, y, label, onClick, opts = {}) {
   })
   bg.on('pointerdown', () => {
     bg.setScale(0.96)
-    runes.setScale(0.96)
     t.setScale(0.96)
   })
   bg.on('pointerup', () => {
     bg.setScale(1)
-    runes.setScale(1)
     t.setScale(1)
     Audio.play(scene, SFX.click)
     onClick?.()
