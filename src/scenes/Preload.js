@@ -84,7 +84,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('ui', 'assets/game/ui/kenney-ui.png', { frameWidth: 32, frameHeight: 32 })
     // Kenney UI Pack (Pixel Adventure): blue-grey 9-slice panel for menu/HUD chrome.
     this.load.image('ui-stone', 'assets/game/ui/ui-stone.png')
-    this.load.image('ui-runes', 'assets/game/ui/ui-runes.png')
+    this.load.image('ui-stone-danger', 'assets/game/ui/ui-stone-danger.png')
 
     // SFX — Kenney ui / impact / rpg packs (ogg). Logical names live in SFX.
     const sfx = (key, path) => this.load.audio(key, `assets/audio/${path}`)

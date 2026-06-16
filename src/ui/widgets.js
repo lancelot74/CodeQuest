@@ -1,34 +1,25 @@
 import Phaser from 'phaser'
-import { COLORS, RUNE } from '../utils/constants.js'
+import { COLORS } from '../utils/constants.js'
 import { Audio, SFX } from '../systems/AudioSystem.js'
 
 const INSET = 12 // nine-slice corner size — small so tiny buttons stay crisp
 
-// Stone nine-slice with a runes-glow overlay glued on top. Returns the stone so
-// callers keep the plain panel API; the runes layer mirrors every transform the
-// caller applies (scroll/depth/alpha/scale/position) so it never orphans into the
-// world. setTint is deliberately NOT mirrored — the stone tints for hover/dim while
-// the runes keep their mood colour, which setUiMood() recolours via the registry.
+// One gothic stone nine-slice. The whole panel art swaps to a blood-red variant
+// when danger strikes — panels are registered per scene so setUiMood() can swap
+// them all at once. Single layer, so callers transform it freely (no orphaning).
 function stonePanel(scene, x, y, w, h, ox, oy) {
-  const stone = scene.add.nineslice(x, y, 'ui-stone', undefined, w, h, INSET, INSET, INSET, INSET).setOrigin(ox, oy)
-  const runes = scene.add.nineslice(x, y, 'ui-runes', undefined, w, h, INSET, INSET, INSET, INSET).setOrigin(ox, oy)
-  runes.setTint(RUNE[scene._uiMood || 'calm'])
-  ;(scene._uiRunes ||= []).push(runes)
-  for (const m of ['setScrollFactor', 'setDepth', 'setAlpha', 'setVisible', 'setScale', 'setPosition', 'setX', 'setY']) {
-    const orig = stone[m].bind(stone)
-    stone[m] = function (...args) {
-      runes[m](...args)
-      return orig(...args)
-    }
-  }
-  return stone
+  const tex = scene._uiMood === 'danger' ? 'ui-stone-danger' : 'ui-stone'
+  const p = scene.add.nineslice(x, y, tex, undefined, w, h, INSET, INSET, INSET, INSET).setOrigin(ox, oy)
+  ;(scene._uiPanels ||= []).push(p)
+  return p
 }
 
-// Recolour every rune layer in a scene (cold blue <-> blood red).
+// Swap every panel in a scene between the calm and the blood-red danger art.
 export function setUiMood(scene, mood) {
   scene._uiMood = mood
-  const c = RUNE[mood] || RUNE.calm
-  for (const r of scene._uiRunes || []) if (r.active) r.setTint(c)
+  const tex = mood === 'danger' ? 'ui-stone-danger' : 'ui-stone'
+  if (!scene.textures.exists(tex)) return
+  for (const p of scene._uiPanels || []) if (p.active) p.setTexture(tex)
 }
 
 export function pixelText(scene, x, y, text, size = 10, color = COLORS.text) {

@@ -29,6 +29,3 @@ export const COLORS = {
   good: '#7cfc98',
   danger: '#e06a6a',
 }
-
-// Reactive rune glow for the dungeon UI: cold + arcane when calm, blood-red in danger.
-export const RUNE = { calm: 0x6f7cff, danger: 0xd23b3b }
