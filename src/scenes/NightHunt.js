@@ -1591,7 +1591,6 @@ export default class NightHuntScene extends Phaser.Scene {
     this.trapped = false
     if (this.trapText) this.trapText.setVisible(false)
     this.player.body.setVelocity(0, 0)
-    this.restPose()
     this.killCloud() // no weather over the death overlay
     // update() bails on gameOver but arcade physics keeps stepping — without this the
     // hunters glide on their last velocity under the death overlay
@@ -1611,6 +1610,26 @@ export default class NightHuntScene extends Phaser.Scene {
       SaveSystem.save()
     }
     const sub = newBest ? `Reached round ${this.round} — NEW BEST!` : `Reached round ${this.round} — best ${hunt.bestRound}`
+
+    // Heroes with a death animation play it out before the overlay; the rest snap to
+    // a rest pose and show the overlay immediately (unchanged behavior).
+    this._overlayShown = false
+    const deathKey = `${this.heroKey}-death`
+    if (this.anims.exists(deathKey)) {
+      this.player.play(deathKey)
+      this.player.once(`animationcomplete-${deathKey}`, () => this.showCaughtOverlay(sub, newBest))
+      this.time.delayedCall(2000, () => this.showCaughtOverlay(sub, newBest)) // safety net
+    } else {
+      this.restPose()
+      this.showCaughtOverlay(sub, newBest)
+    }
+  }
+
+  // The CAUGHT screen: dim, title, round reached, RETRY + MAIN MENU. Idempotent so the
+  // death-animation path and its safety-net timer can't double-build it.
+  showCaughtOverlay(sub, newBest) {
+    if (this._overlayShown) return
+    this._overlayShown = true
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0b0d1a, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 34, 'CAUGHT', 26, '#e06a6a').setScrollFactor(0).setDepth(11001)
     pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 4, sub, 9, newBest ? '#ffe066' : '#cdd7ee').setScrollFactor(0).setDepth(11001)
