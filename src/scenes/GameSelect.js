@@ -27,11 +27,10 @@ export default class GameSelectScene extends Phaser.Scene {
   create() {
     nightBackdrop(this)
     ensureGlowTexture(this)
-    pixelText(this, GAME_WIDTH / 2, 28, 'CHOOSE A GAME', 18, '#ffe066')
+    pixelText(this, GAME_WIDTH / 2, 28, 'CHOOSE YOUR HUNT', 18, '#ffe066')
 
     this.buildHuntCard()
-    this.buildSmallCard(GAME_WIDTH / 2 - 102, 'STORY MODE', ['code puzzles,', 'platforming'], 'story')
-    this.buildSmallCard(GAME_WIDTH / 2 + 102, 'AGE OF WAR', ['lane battles,', 'code prompts'], 'war')
+    this.buildChallengeCard(GAME_WIDTH / 2, 254)
 
     button(this, 52, GAME_HEIGHT - 22, '< BACK', () => this.scene.start('MainMenu'), { size: 8 })
   }
@@ -82,17 +81,14 @@ export default class GameSelectScene extends Phaser.Scene {
     this.tweens.add({ targets: [this.senseG, this.senseLine], alpha: 1, duration: 350 })
   }
 
-  buildSmallCard(cx, title, blurb, mode) {
-    const cy = 254
-    const w = 188
+  // Challenge (dungeon crawl) — shown but inert until the dungeon mode ships (sub-project D).
+  buildChallengeCard(cx, cy) {
+    const w = 240
     const h = 86
-    const bg = uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x8b93b8)
+    uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x4a4f63)
     this.add.rectangle(cx, cy, w - 8, h - 8, 0x141a30, 0.9)
-    pixelText(this, cx, cy - 24, title, 10, '#eaf1ff')
-    blurb.forEach((line, i) => pixelText(this, cx, cy + i * 13, line, 7, '#8ea0c0'))
-    const hit = this.add.rectangle(cx, cy, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true })
-    hit.on('pointerover', () => bg.setTint(0xe2ecff))
-    hit.on('pointerout', () => bg.setTint(0x8b93b8))
-    hit.on('pointerup', () => this.scene.start('ModePage', { mode }))
+    pixelText(this, cx, cy - 22, 'CHALLENGE', 12, '#7c84a0')
+    pixelText(this, cx, cy + 2, 'descend the dungeon', 7, '#6f7db0')
+    pixelText(this, cx, cy + 20, 'COMING SOON', 8, '#c98a4a')
   }
 }

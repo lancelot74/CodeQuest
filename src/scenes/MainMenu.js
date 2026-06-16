@@ -40,9 +40,8 @@ export default class MainMenuScene extends Phaser.Scene {
     if (best > 1) pixelText(this, 12, 16, `save.bestRound = ${best}`, 8, '#7ab8ff').setOrigin(0, 0.5)
 
     const W = 180
-    panelButton(this, GAME_WIDTH / 2, 214, 'GAME', () => this.scene.start('GameSelect'), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 256, 'CODEX', () => this.scene.start('Codex'), { width: W })
-    panelButton(this, GAME_WIDTH / 2, 298, 'SETTINGS', () => this.scene.start('Settings'), { width: W })
+    panelButton(this, GAME_WIDTH / 2, 232, 'GAME', () => this.scene.start('GameSelect'), { width: W })
+    panelButton(this, GAME_WIDTH / 2, 278, 'SETTINGS', () => this.scene.start('Settings'), { width: W })
 
     Music.play(this, 'bgm-main')
 

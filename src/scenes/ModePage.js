@@ -24,18 +24,6 @@ cloud.storm     = true  // run before the bolt drops`,
 // One briefing page per mode, reached from the GAME hub. Hero picking lives HERE
 // (single home): hunt offers the full roster, story only the animated heroes.
 const MODE_INFO = {
-  story: {
-    title: 'STORY MODE',
-    play: 'WorldSelect',
-    hero: 'anim',
-    blurb: ['Side-scroll platformer — solve code', 'puzzles to clear each level.'],
-  },
-  war: {
-    title: 'AGE OF WAR',
-    play: 'AgeOfWar',
-    hero: false,
-    blurb: ['Lane battle — answer code prompts to', 'earn gold and push the enemy base.'],
-  },
   hunt: {
     title: 'NIGHT HUNT',
     play: 'NightHunt',
