@@ -66,6 +66,12 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('hunt-lantern-death', 'assets/game/players/hunt-lantern/death.png', LANT)
     this.load.spritesheet('hunt-lantern-sprint', 'assets/game/players/hunt-lantern/sprint.png', LANT)
 
+    // Dungeon final boss — the Gargoyle Guardian (96px strips) + its rubble projectile.
+    const GARG = { frameWidth: 96, frameHeight: 96 }
+    this.load.spritesheet('gargoyle-idle', 'assets/game/bosses/gargoyle-idle.png', GARG)
+    this.load.spritesheet('gargoyle-death', 'assets/game/bosses/gargoyle-death.png', GARG)
+    this.load.spritesheet('gargoyle-rubble', 'assets/game/bosses/gargoyle-rubble.png', { frameWidth: 32, frameHeight: 32 })
+
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
     const HUNT = 'assets/game/hunt'

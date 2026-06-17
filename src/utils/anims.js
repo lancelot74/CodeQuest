@@ -60,6 +60,14 @@ export function createEnemyAnimations(scene) {
   define(scene, 'red-fly', 'red-fly', 8, -1)
   define(scene, 'red-glide', 'red-glide', 8, -1)
   define(scene, 'fireball', 'fireball', 12, -1)
+
+  // Gargoyle Guardian (dungeon final boss): idle loops slow + heavy; death holds on
+  // the rubble heap; rubble spins. Combat anims (smash/hurl/hurt) are added in C2.
+  if (scene.textures.exists('gargoyle-idle')) {
+    define(scene, 'gargoyle-idle', 'gargoyle-idle', 6, -1)
+    define(scene, 'gargoyle-death', 'gargoyle-death', 10, 0)
+    define(scene, 'gargoyle-rubble', 'gargoyle-rubble', 12, -1)
+  }
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {
