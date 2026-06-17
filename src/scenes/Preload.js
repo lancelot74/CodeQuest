@@ -70,6 +70,9 @@ export default class PreloadScene extends Phaser.Scene {
     const GARG = { frameWidth: 96, frameHeight: 96 }
     this.load.spritesheet('gargoyle-idle', 'assets/game/bosses/gargoyle-idle.png', GARG)
     this.load.spritesheet('gargoyle-death', 'assets/game/bosses/gargoyle-death.png', GARG)
+    this.load.spritesheet('gargoyle-smash', 'assets/game/bosses/gargoyle-smash.png', GARG)
+    this.load.spritesheet('gargoyle-hurl', 'assets/game/bosses/gargoyle-hurl.png', GARG)
+    this.load.spritesheet('gargoyle-hurt', 'assets/game/bosses/gargoyle-hurt.png', GARG)
     this.load.spritesheet('gargoyle-rubble', 'assets/game/bosses/gargoyle-rubble.png', { frameWidth: 32, frameHeight: 32 })
 
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
