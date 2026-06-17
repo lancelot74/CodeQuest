@@ -90,8 +90,10 @@ export default class GameSelectScene extends Phaser.Scene {
     this.add.rectangle(cx, cy, w - 8, h - 8, 0x160f1a, 0.9)
     pixelText(this, cx, cy - 22, 'DUNGEON CRAWL', 11, '#ffcf8a')
     pixelText(this, cx, cy + 2, 'sneak, fell the guardian, descend', 6, '#c98a8a')
-    const best = SaveSystem.data.challenge?.bestDepth || 0
-    pixelText(this, cx, cy + 20, best > 0 ? `deepest: floor ${best}` : 'the lantern is your only light', 7, '#9a8ac0')
+    const ch = SaveSystem.data.challenge || {}
+    const best = ch.bestDepth || 0
+    const line = ch.won ? `conquered  ·  deepest ${best}` : best > 0 ? `deepest: floor ${best}` : 'the lantern is your only light'
+    pixelText(this, cx, cy + 20, line, 7, ch.won ? '#ffe066' : '#9a8ac0')
 
     const hit = this.add.rectangle(cx, cy, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true })
     hit.on('pointerover', () => bg.setTint(0xd8b0b0))

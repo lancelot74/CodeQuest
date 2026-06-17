@@ -7,7 +7,7 @@ function defaultSave() {
     character: 'ninja',
     settings: { musicVol: 0.85, sfxVol: 0.45, muted: false },
     hunt: { bestRound: 1, dawn: false },
-    challenge: { bestDepth: 0 },
+    challenge: { bestDepth: 0, won: false },
   }
 }
 

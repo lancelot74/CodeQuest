@@ -43,13 +43,23 @@ const BLAST_CD = 3 // ward cooldown (seconds)
 const KILL_RANGE = 34 // stealth-kill reach
 
 // Boss roster (config-driven so campaign floors can swap in the stalkers later).
+// The Gargoyle has a full custom anim set (idle/hurl/smash/hurt/death). The stalkers
+// reuse their walk loop as idle and a tinted wind-up as the hurl telegraph; every
+// boss throws a catchable projectile so the Emberhand works on all of them.
 const BOSSES = {
-  gargoyle: { sheet: 'gargoyle', name: 'THE GARGOYLE GUARDIAN', hp: 4, scale: 1.0, body: [44, 34], proj: 'gargoyle-rubble', projScale: 1, hurl: 'gargoyle-hurl', smash: 'gargoyle-smash', hurt: 'gargoyle-hurt' },
+  gargoyle: { tex: 'gargoyle-idle', idle: 'gargoyle-idle', death: 'gargoyle-death', name: 'THE GARGOYLE GUARDIAN', hp: 5, scale: 1.0, body: [44, 34], proj: 'gargoyle-rubble', projScale: 1, hurl: 'gargoyle-hurl', smash: 'gargoyle-smash', hurt: 'gargoyle-hurt', verb: 'the guardian crushed you' },
+  demon: { tex: 'demon-walk', idle: 'demon-walk', death: 'demon-death', name: 'THE HORNED STALKER', hp: 3, scale: 1.6, body: [40, 30], proj: 'venom', projScale: 1.4, verb: 'the stalker gored you' },
+  mage: { tex: 'mage-walk', idle: 'mage-walk', death: 'mage-death', name: 'THE PALE MAGE', hp: 3, scale: 1.5, body: [36, 34], proj: 'venom', projScale: 1.2, verb: 'the mage blasted you' },
+  ooze: { tex: 'ooze-walk', idle: 'ooze-walk', death: 'ooze-death', name: 'THE CREEPING OOZE', hp: 4, scale: 1.6, body: [44, 26], proj: 'venom', projScale: 1.6, verb: 'the ooze dissolved you' },
 }
 
-// Authored campaign. Floors beyond the list become endless (last floor, scaled).
+// Authored 4-floor campaign; the Gargoyle caps it. Beyond floor 4 it loops into an
+// endless escalating descent (cfg() cycles the bosses with scaled stats).
 const FLOORS = [
-  { name: 'THE THRESHOLD', boss: 'gargoyle', hunters: [['demon', 'sight'], ['mage', 'hearing']] },
+  { name: 'THE THRESHOLD', boss: 'demon', hunters: [['demon', 'sight']] },
+  { name: 'THE WHISPERING HALLS', boss: 'mage', hunters: [['mage', 'hearing'], ['demon', 'sight']] },
+  { name: 'THE SUNKEN VAULT', boss: 'ooze', hunters: [['ooze', 'sight'], ['mage', 'hearing']] },
+  { name: "THE GUARDIAN'S GATE", boss: 'gargoyle', hunters: [['demon', 'sight'], ['mage', 'hearing'], ['ooze', 'sight']] },
 ]
 
 export default class DungeonCrawl extends Phaser.Scene {
@@ -116,7 +126,10 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   cfg() {
-    return FLOORS[Math.min(this.floor, FLOORS.length) - 1]
+    if (this.floor <= FLOORS.length) return FLOORS[this.floor - 1]
+    // endless descent: cycle the campaign bosses under a generic name
+    const base = FLOORS[(this.floor - 1) % FLOORS.length]
+    return { name: `DESCENT ${this.floor}`, boss: base.boss, hunters: base.hunters }
   }
 
   // ---- arena (dungeon-skinned) ----------------------------------------------
@@ -433,8 +446,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     const b = BOSSES[cfg.boss]
     this.bossCfg = b
     const over = Math.max(0, this.floor - FLOORS.length)
-    const boss = this.physics.add.sprite(this.bossSpot.x, this.bossSpot.y, `${b.sheet}-idle`).setScale(b.scale).setOrigin(0.5, 0.7)
-    boss.play(`${b.sheet}-idle`)
+    const boss = this.physics.add.sprite(this.bossSpot.x, this.bossSpot.y, b.tex).setScale(b.scale).setOrigin(0.5, 0.7)
+    boss.play(b.idle)
     boss.body.setAllowGravity(false)
     boss.body.setSize(b.body[0], b.body[1])
     boss.hp = b.hp + Math.floor(over * 1.5)
@@ -447,7 +460,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
     Music.play(this, 'bgm-boss', { fade: 500 })
     setUiMood(this, 'danger')
-    this.floorBanner(b.name, 'catch the rubble — hurl it back')
+    this.floorBanner(b.name, 'catch its shot — hurl it back')
     this.buildBossHud()
   }
 
@@ -468,7 +481,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
     b.actT -= dt
     if (b.actT > 0) return
-    if (d < 120) this.bossSmash()
+    if (d < 120 && this.bossCfg.smash) this.bossSmash()
     else this.bossHurl()
   }
 
@@ -476,14 +489,22 @@ export default class DungeonCrawl extends Phaser.Scene {
     const b = this.boss
     b.state = 'hurl'
     b.body.setVelocity(0, 0)
-    b.play(`${this.bossCfg.hurl}`)
-    b.once(`animationcomplete-${this.bossCfg.hurl}`, () => {
+    const back = () => {
       if (b.state !== 'hurl') return
       this.spawnRubble()
-      b.play(`${this.bossCfg.sheet}-idle`)
+      b.play(this.bossCfg.idle)
       b.state = 'idle'
       b.actT = Phaser.Math.FloatBetween(1.6, 2.4)
-    })
+    }
+    if (this.bossCfg.hurl) {
+      b.play(this.bossCfg.hurl)
+      b.once(`animationcomplete-${this.bossCfg.hurl}`, back)
+    } else {
+      // stalker: a quick wind-up tint telegraph, then the throw
+      b.setTint(0xffd24a)
+      this.time.delayedCall(360, () => { if (b.active && b.state !== 'dead') b.clearTint() })
+      this.time.delayedCall(380, back)
+    }
   }
 
   bossSmash() {
@@ -498,7 +519,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       if (b.state !== 'smash') return
       // impact: hit if the player is within the shockwave
       if (!this.gameOver && Phaser.Math.Distance.Between(b.x, b.y + 10, this.player.x, this.player.y) < 100) {
-        if (!this.consumeShield()) this.playerDeath('the guardian crushed you')
+        if (!this.consumeShield()) this.playerDeath(this.bossCfg.verb)
       }
       CombatSystem.puff(this, b.x, b.y + 10, 0xff7a4a, b.y)
       Audio.play(this, SFX.heavy, { volume: 0.8, rate: 0.8 })
@@ -507,21 +528,29 @@ export default class DungeonCrawl extends Phaser.Scene {
     b.once(`animationcomplete-${this.bossCfg.smash}`, () => {
       if (b.state !== 'smash') return
       ring.destroy()
-      b.play(`${this.bossCfg.sheet}-idle`)
+      b.play(this.bossCfg.idle)
       b.state = 'idle'
       b.actT = Phaser.Math.FloatBetween(1.4, 2.2)
     })
   }
 
+  // a projectile sprite for the current boss — a spinning anim if it has one (rubble),
+  // else a static chunk/blob given angular spin
+  makeProj(x, y) {
+    const b = this.bossCfg
+    const spr = this.physics.add.sprite(x, y, b.proj).setScale(b.projScale).setDepth(9000)
+    spr.body.setAllowGravity(false)
+    if (this.anims.exists(b.proj)) spr.play(b.proj)
+    else spr.body.setAngularVelocity(420)
+    return spr
+  }
+
   spawnRubble() {
     const b = this.boss
     const a = Math.atan2(this.player.y - b.y, this.player.x - b.x)
-    const spr = this.physics.add.sprite(b.x, b.y - 10, this.bossCfg.proj).setScale(this.bossCfg.projScale).setDepth(9000)
-    spr.play(this.bossCfg.proj)
-    spr.body.setAllowGravity(false)
-    const f = { spr, catchable: true, thrown: false, ttl: 5 }
+    const spr = this.makeProj(b.x, b.y - 10)
     spr.body.setVelocity(Math.cos(a) * RUBBLE_SPEED, Math.sin(a) * RUBBLE_SPEED)
-    this.fireballs.push(f)
+    this.fireballs.push({ spr, catchable: true, thrown: false, ttl: 5 })
     Audio.play(this, SFX.slash, { volume: 0.6, rate: 0.7 })
   }
 
@@ -556,7 +585,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (!best) return
     this.killFireball(best)
     this.ember = this.add.sprite(this.player.x, this.player.y - 8, this.bossCfg.proj).setScale(this.bossCfg.projScale).setDepth(this.player.y + 2)
-    this.ember.play(this.bossCfg.proj)
+    if (this.anims.exists(this.bossCfg.proj)) this.ember.play(this.bossCfg.proj)
     Audio.play(this, SFX.clear, { volume: 0.5, rate: 1.3 })
     CombatSystem.puff(this, this.player.x, this.player.y - 8, 0xffd24a, this.player.y)
     this.flashBanner('caught! — E to hurl', '#ffd24a')
@@ -569,9 +598,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     let dy = this.faceY
     if (dx === 0 && dy === 0) dx = this.player.flipX ? -1 : 1
     const l = Math.hypot(dx, dy) || 1
-    const spr = this.physics.add.sprite(e.x, e.y, this.bossCfg.proj).setScale(this.bossCfg.projScale).setDepth(9000)
-    spr.play(this.bossCfg.proj)
-    spr.body.setAllowGravity(false)
+    const spr = this.makeProj(e.x, e.y)
     spr.body.setVelocity((dx / l) * THROW_SPEED, (dy / l) * THROW_SPEED)
     this.fireballs.push({ spr, catchable: false, thrown: true, ttl: 2.2 })
     e.destroy()
@@ -611,7 +638,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       // an uncaught boss projectile that reaches the player hits
       if (f.catchable && !f.thrown && !this.gameOver && Phaser.Math.Distance.Between(s.x, s.y, this.player.x, this.player.y) < 18) {
         this.killFireball(f)
-        if (!this.consumeShield()) this.playerDeath('struck by rubble')
+        if (!this.consumeShield()) this.playerDeath('struck down — catch it next time')
       }
     }
   }
@@ -619,7 +646,7 @@ export default class DungeonCrawl extends Phaser.Scene {
   bossTouch() {
     if (this.gameOver || !this.boss || this.boss.state === 'dead') return
     if (this.consumeShield()) return
-    this.playerDeath('the guardian crushed you')
+    this.playerDeath(this.bossCfg.verb)
   }
 
   bossHit() {
@@ -635,16 +662,22 @@ export default class DungeonCrawl extends Phaser.Scene {
       return
     }
     Audio.play(this, SFX.enemyHit, { volume: 0.8 })
-    // flinch
-    b.state = 'hurt'
     b.body.setVelocity(0, 0)
-    b.play(this.bossCfg.hurt)
-    b.once(`animationcomplete-${this.bossCfg.hurt}`, () => {
-      if (b.state !== 'hurt') return
-      b.play(`${this.bossCfg.sheet}-idle`)
-      b.state = 'idle'
-      b.actT = 0.8
-    })
+    if (this.bossCfg.hurt) {
+      b.state = 'hurt'
+      b.play(this.bossCfg.hurt)
+      b.once(`animationcomplete-${this.bossCfg.hurt}`, () => {
+        if (b.state !== 'hurt') return
+        b.play(this.bossCfg.idle)
+        b.state = 'idle'
+        b.actT = 0.8
+      })
+    } else {
+      // stalker: a quick flinch tint, stay in the walk loop
+      b.setTint(0xff8a8a)
+      this.time.delayedCall(160, () => { if (b.active && b.state !== 'dead') b.clearTint() })
+      b.actT = Math.max(b.actT, 0.6)
+    }
   }
 
   bossDown() {
@@ -653,21 +686,25 @@ export default class DungeonCrawl extends Phaser.Scene {
     b.body.setVelocity(0, 0)
     b.body.enable = false
     Audio.play(this, SFX.enemyDie, { volume: 0.9, rate: 0.7 })
-    b.play(`${this.bossCfg.sheet}-death`)
+    b.play(this.bossCfg.death)
     this.cameras.main.shake(360, 0.014)
     this.phase = 'cleared'
     setUiMood(this, 'calm')
     Music.play(this, 'bgm-main', { fade: 700 })
-    // record depth
+    // record depth + the campaign-win flag (felling the Gargoyle on the final floor)
     const ch = SaveSystem.data.challenge
-    if (this.floor > ch.bestDepth) { ch.bestDepth = this.floor; SaveSystem.save() }
-    this.time.delayedCall(1400, () => this.spawnStairs())
+    if (this.floor > ch.bestDepth) ch.bestDepth = this.floor
+    const finalFloor = this.floor === FLOORS.length
+    if (finalFloor) ch.won = true
+    SaveSystem.save()
+    this.time.delayedCall(1400, () => this.spawnStairs(finalFloor))
   }
 
-  spawnStairs() {
+  spawnStairs(victory) {
     this.stairs = this.add.image(this.bossSpot.x, this.bossSpot.y, 'hunt-sign').setOrigin(0.5, 1).setDepth(this.bossSpot.y).setScale(1.5).setTint(0x7cfc98)
     this.tweens.add({ targets: this.stairs, y: this.stairs.y - 4, yoyo: true, repeat: -1, duration: 600 })
-    this.floorBanner('GUARDIAN FELLED', 'descend the stairs')
+    if (victory) this.floorBanner('THE DUNGEON IS CONQUERED', 'the endless descent opens below')
+    else this.floorBanner('THE WAY IS CLEAR', 'descend the stairs')
   }
 
   checkStairs() {
