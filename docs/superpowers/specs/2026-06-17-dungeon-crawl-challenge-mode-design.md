@@ -1,7 +1,7 @@
 # Dungeon Crawl — Night Hunt Challenge Mode
 
 **Date:** 2026-06-17
-**Status:** Approved design — refreshed 2026-06-17 after A + B shipped and C (the Gargoyle) was spec'd.
+**Status:** ✅ **Shipped 2026-06-18** as `src/scenes/DungeonCrawl.js` (D1 vertical slice → D2 combat kit → D3 campaign/finale/endless), reachable from the GameSelect CHALLENGE card and a `#dungeon` dev hash. Originally approved + refreshed 2026-06-17 after A + B shipped and C (the Gargoyle) was spec'd.
 **Scope:** Sub-project **D** of the "dungeon overhaul." Designed first because it drives the UI and boss choices.
 
 ## The overhaul, decomposed
