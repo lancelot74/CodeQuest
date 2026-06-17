@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { nightBackdrop, button, pixelText, uiPanel, drawSenseIcon, ensureGlowTexture } from '../ui/widgets.js'
 import { SENSES } from '../systems/Hunter.js'
+import { SaveSystem } from '../systems/SaveSystem.js'
 
 // Hero roster shared with the mode briefing pages. The four animated platformer
 // heroes work in every mode; Knight and Golem are single-frame hunt-pack skins
@@ -81,14 +82,20 @@ export default class GameSelectScene extends Phaser.Scene {
     this.tweens.add({ targets: [this.senseG, this.senseLine], alpha: 1, duration: 350 })
   }
 
-  // Challenge (dungeon crawl) — shown but inert until the dungeon mode ships (sub-project D).
+  // Challenge (Dungeon Crawl): sneak the floors, fell the guardian, descend. Wanderer-only.
   buildChallengeCard(cx, cy) {
     const w = 240
     const h = 86
-    uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x4a4f63)
-    this.add.rectangle(cx, cy, w - 8, h - 8, 0x141a30, 0.9)
-    pixelText(this, cx, cy - 22, 'CHALLENGE', 12, '#7c84a0')
-    pixelText(this, cx, cy + 2, 'descend the dungeon', 7, '#6f7db0')
-    pixelText(this, cx, cy + 20, 'COMING SOON', 8, '#c98a4a')
+    const bg = uiPanel(this, cx, cy, w, h, { originX: 0.5, originY: 0.5 }).setTint(0x8b6b6b)
+    this.add.rectangle(cx, cy, w - 8, h - 8, 0x160f1a, 0.9)
+    pixelText(this, cx, cy - 22, 'DUNGEON CRAWL', 11, '#ffcf8a')
+    pixelText(this, cx, cy + 2, 'sneak, fell the guardian, descend', 6, '#c98a8a')
+    const best = SaveSystem.data.challenge?.bestDepth || 0
+    pixelText(this, cx, cy + 20, best > 0 ? `deepest: floor ${best}` : 'the lantern is your only light', 7, '#9a8ac0')
+
+    const hit = this.add.rectangle(cx, cy, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true })
+    hit.on('pointerover', () => bg.setTint(0xd8b0b0))
+    hit.on('pointerout', () => bg.setTint(0x8b6b6b))
+    hit.on('pointerup', () => this.scene.start('DungeonCrawl'))
   }
 }

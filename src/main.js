@@ -8,6 +8,7 @@ import ModePageScene from './scenes/ModePage.js'
 import SettingsScene from './scenes/Settings.js'
 import NightHuntScene from './scenes/NightHunt.js'
 import FinaleScene from './scenes/Finale.js'
+import DungeonCrawlScene from './scenes/DungeonCrawl.js'
 
 const game = new Phaser.Game(
   createConfig([
@@ -19,6 +20,7 @@ const game = new Phaser.Game(
     SettingsScene,
     NightHuntScene,
     FinaleScene,
+    DungeonCrawlScene,
   ]),
 )
 if (import.meta.env.DEV) window.__game = game

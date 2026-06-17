@@ -28,6 +28,11 @@ export default class MainMenuScene extends Phaser.Scene {
       this.scene.start('NightHunt')
       return
     }
+    // #dungeon drops straight into the Dungeon Crawl challenge mode (dev/testing)
+    if (window.location.hash === '#dungeon') {
+      this.scene.start('DungeonCrawl')
+      return
+    }
     nightBackdrop(this, { treeline: false }) // the vignette below brings its own forest
     ensureGlowTexture(this)
     this.buildVignette()
