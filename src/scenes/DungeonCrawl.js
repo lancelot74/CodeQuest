@@ -38,6 +38,9 @@ const CATCH_RADIUS = 40 // Emberhand grab range
 const EMBER_ORBIT = 22
 const THROW_SPEED = 300
 const RUBBLE_SPEED = 150 // boss hurl speed — slow enough to read + catch
+const BLAST_RADIUS = 120 // lantern ward — staggers nearby creatures
+const BLAST_CD = 3 // ward cooldown (seconds)
+const KILL_RANGE = 34 // stealth-kill reach
 
 // Boss roster (config-driven so campaign floors can swap in the stalkers later).
 const BOSSES = {
@@ -78,6 +81,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.bolts = [] // non-catchable hunter lunges (unused for now; reserved)
     this.ember = null
     this._prevE = false
+    this._prevBlast = false
+    this.blastCd = 0
     this._stepT = 0
     this.boss = null
     this.stairs = null
@@ -102,8 +107,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,UP,DOWN,LEFT,RIGHT')
-    showTouchControls({ jump: 'RUN', attack: 'USE', heavy: null })
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,UP,DOWN,LEFT,RIGHT')
+    showTouchControls({ jump: 'RUN', attack: 'USE', heavy: 'WARD' })
     this.events.once('shutdown', () => hideTouchControls())
 
     Music.play(this, 'bgm-main')
@@ -271,6 +276,78 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (this.gameOver || this.phase !== 'stealth') return
     if (this.consumeShield()) return
     this.playerDeath('the hunters took you')
+  }
+
+  // ---- stealth-kill + lantern ward ------------------------------------------
+  // Execute the nearest UNAWARE hunter (patrolling / not yet locked on) in reach.
+  tryStealthKill() {
+    let best = null
+    let bd = KILL_RANGE
+    for (const h of this.hunters) {
+      if (h.mode === 'CHASE' || h.awareness >= 0.45) continue
+      const d = Phaser.Math.Distance.Between(h.x, h.y, this.player.x, this.player.y)
+      if (d < bd) { bd = d; best = h }
+    }
+    if (!best) return
+    this.banishHunter(best, true)
+    this.flashBanner('silent kill', '#7cfc98')
+  }
+
+  banishHunter(h, silent) {
+    const i = this.hunters.indexOf(h)
+    if (i >= 0) {
+      this.hunters.splice(i, 1)
+      const col = this.hunterColliders[i]
+      if (col) col.destroy()
+      this.hunterColliders.splice(i, 1)
+    }
+    h.meter.clear()
+    h.body.enable = false
+    CombatSystem.puff(this, h.x, h.y - 6, silent ? 0x7cfc98 : 0xffe6a0, h.y + 1)
+    Audio.play(this, SFX.enemyDie, { volume: 0.7, rate: silent ? 0.9 : 1.1 })
+    const deathKey = `${h.skinKey}-death`
+    if (this.anims.exists(deathKey)) {
+      h.play(deathKey)
+      h.once(`animationcomplete-${deathKey}`, () => h.destroy())
+      this.time.delayedCall(1400, () => h.active && h.destroy())
+    } else {
+      h.destroy()
+    }
+  }
+
+  // Lantern ward: a short-range light-blast that staggers nearby creatures and
+  // jolts the boss out of its rhythm. Light vs. the dungeon dark.
+  handleBlast(dt) {
+    this.blastCd = Math.max(0, this.blastCd - dt)
+    const pressed = this.keys.SPACE.isDown || TouchState.attackH
+    const edge = pressed && !this._prevBlast
+    this._prevBlast = pressed
+    if (edge && this.blastCd <= 0) this.doBlast()
+  }
+
+  doBlast() {
+    this.blastCd = BLAST_CD
+    const px = this.player.x
+    const py = this.player.y - 6
+    const ring = this.add.circle(px, py, 10, 0xffe6a0, 0.5).setDepth(py + 2)
+    this.tweens.add({ targets: ring, radius: BLAST_RADIUS, alpha: 0, duration: 380, onComplete: () => ring.destroy() })
+    Audio.play(this, SFX.clear, { volume: 0.7 })
+    CombatSystem.puff(this, px, py, 0xffe6a0, py + 1)
+    // stagger nearby hunters — frozen long enough to slip past
+    for (const h of this.hunters) {
+      if (Phaser.Math.Distance.Between(h.x, h.y, px, py) > BLAST_RADIUS) continue
+      h.mode = 'STUNNED'
+      h.stunTimer = 2.5
+      h.awareness = 0
+      h.setTint(0xffe6a0)
+      this.time.delayedCall(220, () => h.active && h.clearTint())
+    }
+    // jolt the boss: delay its next action + a brief flinch tint
+    if (this.boss && this.boss.state !== 'dead' && Phaser.Math.Distance.Between(this.boss.x, this.boss.y, px, py) < BLAST_RADIUS + 50) {
+      this.boss.actT = Math.max(this.boss.actT, 1.4)
+      this.boss.setTint(0xffe6a0)
+      this.time.delayedCall(240, () => this.boss?.active && this.boss.clearTint())
+    }
   }
 
   // ---- player movement ------------------------------------------------------
@@ -454,6 +531,12 @@ export default class DungeonCrawl extends Phaser.Scene {
     const pressed = this.keys.E.isDown || TouchState.attackL
     const edge = pressed && !this._prevE
     this._prevE = pressed
+
+    // in the stealth phase, E executes an unaware hunter instead (no projectiles yet)
+    if (this.phase === 'stealth') {
+      if (edge) this.tryStealthKill()
+      return
+    }
 
     if (this.ember) {
       this._orbitA = (this._orbitA || 0) + dt * 5
@@ -661,7 +744,14 @@ export default class DungeonCrawl extends Phaser.Scene {
   updateHud() {
     this.hudFloor.setText(`FLOOR ${this.floor}`)
     this.hudBest.setText(`deepest: ${SaveSystem.data.challenge.bestDepth}`)
-    this.hudHint.setText(this.phase === 'boss' ? 'E: catch / hurl rubble' : this.phase === 'cleared' ? 'take the stairs down' : 'reach the gate — stay in shadow')
+    const ward = this.blastCd > 0 ? ` (ward ${this.blastCd.toFixed(1)}s)` : '  ·  SPACE: ward'
+    this.hudHint.setText(
+      this.phase === 'boss'
+        ? `E: catch / hurl rubble${ward}`
+        : this.phase === 'cleared'
+          ? 'take the stairs down'
+          : `reach the gate  ·  E: silent kill${ward}`
+    )
   }
 
   buildBossHud() {
@@ -695,6 +785,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       if (this.phase === 'boss') this.updateBoss(dt)
       if (this.phase === 'cleared') this.checkStairs()
       this.handleEmber(dt)
+      this.handleBlast(dt)
       this.updateProjectiles(dt)
     }
     this.updateHud()
