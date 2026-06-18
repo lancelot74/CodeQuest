@@ -152,25 +152,55 @@ export default class DungeonCrawl extends Phaser.Scene {
     const start = this.floorData.rooms.get(this.floorData.startId)
     this.spawn = { x: start.bounds.centerX, y: start.bounds.centerY }
 
-    // floor + walls per room
+    // floor + walls per room, then the molten cracks (Obsidian Ruins skin)
     const floorG = this.add.graphics().setDepth(0)
     for (const r of this.floorData.rooms.values()) this.drawRoomFloor(floorG, r)
     for (const r of this.floorData.rooms.values()) this.buildRoomWalls(r)
+    for (const r of this.floorData.rooms.values()) this.addMoltenCracks(r)
   }
 
   drawRoomFloor(g, room) {
     const b = room.bounds
-    g.fillStyle(0x23252f, 1).fillRect(b.x, b.y, b.width, b.height)
-    g.lineStyle(1, 0x191b23, 1)
+    // black volcanic flagstone
+    g.fillStyle(0x18121c, 1).fillRect(b.x, b.y, b.width, b.height)
+    g.lineStyle(1, 0x0f0a12, 1)
     for (let c = 0; c <= ROOM_COLS; c++) g.lineBetween(b.x + c * TILE, b.y, b.x + c * TILE, b.bottom)
     for (let rr = 0; rr <= ROOM_ROWS; rr++) g.lineBetween(b.x, b.y + rr * TILE, b.right, b.y + rr * TILE)
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 30; i++) {
       const c = Phaser.Math.Between(0, ROOM_COLS - 1)
       const rr = Phaser.Math.Between(0, ROOM_ROWS - 1)
-      g.fillStyle(0x1e2028, 1).fillRect(b.x + c * TILE + 1, b.y + rr * TILE + 1, TILE - 2, TILE - 2)
+      g.fillStyle(0x140e18, 1).fillRect(b.x + c * TILE + 1, b.y + rr * TILE + 1, TILE - 2, TILE - 2)
     }
-    // cold wash so the lantern reads
-    this.add.rectangle(b.x, b.y, b.width, b.height, 0x0a0c16, 0.45).setOrigin(0, 0).setDepth(1)
+    this.add.rectangle(b.x, b.y, b.width, b.height, 0x080410, 0.4).setOrigin(0, 0).setDepth(1)
+  }
+
+  // A few glowing molten cracks per room, faintly piercing the dark + pulsing.
+  addMoltenCracks(room) {
+    const b = room.bounds
+    const n = Phaser.Math.Between(3, 5)
+    for (let i = 0; i < n; i++) {
+      const g = this.add.graphics().setDepth(950)
+      let x = Phaser.Math.Between(b.x + 36, b.right - 36)
+      let y = Phaser.Math.Between(b.y + 36, b.bottom - 36)
+      const pts = [[x, y]]
+      const segs = Phaser.Math.Between(3, 6)
+      for (let s = 0; s < segs; s++) {
+        x += Phaser.Math.Between(-26, 26)
+        y += Phaser.Math.Between(-26, 26)
+        pts.push([x, y])
+      }
+      const stroke = (width, color, alpha) => {
+        g.lineStyle(width, color, alpha)
+        g.beginPath()
+        g.moveTo(pts[0][0], pts[0][1])
+        for (const pp of pts) g.lineTo(pp[0], pp[1])
+        g.strokePath()
+      }
+      stroke(5, 0xff5a2a, 0.1) // soft glow
+      stroke(1.5, 0xff8a4a, 0.55) // bright core
+      g.setAlpha(0.5)
+      this.tweens.add({ targets: g, alpha: 0.95, yoyo: true, repeat: -1, duration: Phaser.Math.Between(900, 1700), ease: 'Sine.easeInOut' })
+    }
   }
 
   // Solid wall along each edge, leaving a centred gap where a door connects.
@@ -208,8 +238,8 @@ export default class DungeonCrawl extends Phaser.Scene {
 
   // A static wall rectangle (collider + LOS blocker + simple stone visual).
   addWall(cx, cy, w, h) {
-    const rect = this.add.rectangle(cx, cy, w, h, 0x2a2d3a).setDepth(cy)
-    rect.setStrokeStyle(1, 0x444b5e, 0.6)
+    const rect = this.add.rectangle(cx, cy, w, h, 0x221826).setDepth(cy)
+    rect.setStrokeStyle(1, 0x3a2c38, 0.7)
     this.physics.add.existing(rect, true)
     this.wallZones.push(rect)
     this.wallRects.push(new Phaser.Geom.Rectangle(cx - w / 2, cy - h / 2, w, h))
@@ -796,7 +826,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
   // ---- fog ------------------------------------------------------------------
   buildFog() {
-    this.fogColor = 0x05060f
+    this.fogColor = 0x05030a
     this.fog = this.add.renderTexture(0, 0, GAME_WIDTH, GAME_HEIGHT).setOrigin(0, 0).setScrollFactor(0).setDepth(900)
   }
 
