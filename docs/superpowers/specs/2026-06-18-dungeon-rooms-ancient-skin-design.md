@@ -1,8 +1,8 @@
 # Dungeon Crawl v2 — Rooms & Ancient Skin (R + A)
 
 **Date:** 2026-06-18
-**Status:** Approved design
-**Scope:** Sub-project **R + A** of the "Challenge Mode v2" overhaul. Build order: **R+A → W → B** (user-chosen "foundation first").
+**Status:** ✅ **Shipped 2026-06-18.** Built as `src/dungeon/{FloorGen,Minimap}.js` + a reworked `src/scenes/DungeonCrawl.js`, with Higgsfield obsidian props in `public/assets/game/dungeon/`. All phases done (R+A1 rooms → R+A2 map → R+A3 obsidian skin / props / stealth+treasure), verified via build + Playwright + a real-keyboard playthrough.
+**Scope:** Sub-project **R + A** of the "Challenge Mode v2" overhaul. Build order: **R+A → W → B** (user-chosen "foundation first"). W and B remain as future sub-projects (each its own spec → plan → build).
 
 ## The v2 overhaul, decomposed
 
