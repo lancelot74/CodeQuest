@@ -102,6 +102,9 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.stairs = null
     this.curRoom = null
     this.activeCombat = null
+    this.stealthRoom = null
+    this.charm = false // a one-hit "lantern charm" from the treasure room
+    this.treasurePickup = null
     this.hivemindOn = false
     // hunter-power multipliers Hunter.js reads
     this.senseRangeMul = 1
@@ -152,6 +155,10 @@ export default class DungeonCrawl extends Phaser.Scene {
     }
     const start = this.floorData.rooms.get(this.floorData.startId)
     this.spawn = { x: start.bounds.centerX, y: start.bounds.centerY }
+
+    // one combat room per floor becomes a stealth room (unsealed, unaware hunters)
+    const combats = [...this.floorData.rooms.values()].filter((r) => r.type === 'combat')
+    if (combats.length) Phaser.Utils.Array.GetRandom(combats).type = 'stealth'
 
     // floor + walls per room, then the molten cracks (Obsidian Ruins skin)
     const floorG = this.add.graphics().setDepth(0)
@@ -452,7 +459,9 @@ export default class DungeonCrawl extends Phaser.Scene {
   updateRoom() {
     const r = this.roomAt(this.player.x, this.player.y)
     if (r && r !== this.curRoom) {
+      const prev = this.curRoom
       this.curRoom = r
+      if (prev && prev.type === 'stealth' && !prev.cleared) this.clearStealth(prev)
       this.onEnterRoom(r)
       this.minimap?.refresh()
     }
@@ -464,7 +473,71 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (room.cleared) return
     if (room.type === 'boss') this.startBoss(room)
     else if (room.type === 'combat' && firstVisit) this.startCombat(room)
+    else if (room.type === 'stealth' && firstVisit) this.startStealth(room)
     else if (room.type === 'treasure') this.enterTreasure(room)
+  }
+
+  // A watched hall: hunters patrol UNAWARE and the doors stay open. Sneak through
+  // (clears when you reach the next room) or stealth-kill them. Detection = a chase.
+  startStealth(room) {
+    this.stealthRoom = room
+    const cfg = this.cfg()
+    const n = Math.min(2 + Math.floor(this.floor / 2), 4)
+    for (let i = 0; i < n; i++) {
+      const [skin, sense] = cfg.hunters[i % cfg.hunters.length]
+      const p = this.randomPointInRoom(room)
+      const hn = new Hunter(this, p.x, p.y, skin, sense)
+      hn.hp = HUNTER_HP
+      hn.room = room
+      hn.mode = 'PATROL'
+      hn.awareness = 0
+      this.hunters.push(hn)
+      this.hunterColliders.push(this.physics.add.collider(hn, this.wallZones))
+      this.physics.add.overlap(this.player, hn, () => this.caughtByHunter(hn))
+    }
+    this.flashBanner('a watched hall — stay unseen', '#b47cff')
+  }
+
+  clearStealth(room) {
+    room.cleared = true
+    if (this.stealthRoom === room) this.stealthRoom = null
+    for (const h of [...this.hunters].filter((hh) => hh.room === room)) {
+      const i = this.hunters.indexOf(h)
+      if (i >= 0) {
+        this.hunters.splice(i, 1)
+        this.hunterColliders[i]?.destroy()
+        this.hunterColliders.splice(i, 1)
+      }
+      h.meter.clear()
+      h.destroy()
+    }
+    this.flashBanner('slipped through', '#7cfc98')
+  }
+
+  // The treasure room holds a "lantern charm" pickup: it survives one killing blow.
+  enterTreasure(room) {
+    if (room.cleared || this.treasurePickup) return
+    const c = room.bounds
+    this.add.image(c.centerX, c.centerY + 6, 'dprop-altar').setOrigin(0.5, 0.7).setScale(0.7).setDepth(c.centerY)
+    this.add.ellipse(c.centerX, c.centerY - 26, 26, 26, 0x7cfc98, 0.22).setDepth(c.centerY + 4)
+    const orb = this.add.ellipse(c.centerX, c.centerY - 26, 12, 12, 0x9affc0, 0.95).setDepth(c.centerY + 5)
+    this.tweens.add({ targets: orb, y: orb.y - 6, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.easeInOut' })
+    this.treasurePickup = { orb, room, x: c.centerX, y: c.centerY - 26 }
+    this.flashBanner('a charm rests here', '#7cfc98')
+  }
+
+  checkTreasure() {
+    const t = this.treasurePickup
+    if (!t) return
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y) < 28) {
+      this.charm = true
+      t.room.cleared = true
+      this.tweens.add({ targets: t.orb, scale: 2, alpha: 0, duration: 300, onComplete: () => t.orb.destroy() })
+      this.treasurePickup = null
+      Audio.play(this, SFX.levelUp, { volume: 0.7 })
+      this.flashBanner('lantern charm — survives one blow', '#7cfc98')
+      this.minimap?.refresh()
+    }
   }
 
   startCombat(room) {
@@ -520,11 +593,6 @@ export default class DungeonCrawl extends Phaser.Scene {
     Audio.play(this, SFX.clear, { volume: 0.6 })
     this.flashBanner('room cleared', '#7cfc98')
     this.minimap?.refresh()
-  }
-
-  enterTreasure(room) {
-    // R+A3 (Task 9) fills this with a pickup; for now the room is a safe passage.
-    room.cleared = true
   }
 
   // ---- player movement ------------------------------------------------------
@@ -744,13 +812,22 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   consumeShield() {
-    if (!this.ember) return false
-    CombatSystem.puff(this, this.ember.x, this.ember.y, 0xffd24a, this.player.y)
-    this.ember.destroy()
-    this.ember = null
-    Audio.play(this, SFX.crit, { volume: 0.6 })
-    this.flashBanner('shield spent!', '#ffd24a')
-    return true
+    if (this.ember) {
+      CombatSystem.puff(this, this.ember.x, this.ember.y, 0xffd24a, this.player.y)
+      this.ember.destroy()
+      this.ember = null
+      Audio.play(this, SFX.crit, { volume: 0.6 })
+      this.flashBanner('shield spent!', '#ffd24a')
+      return true
+    }
+    if (this.charm) {
+      this.charm = false
+      CombatSystem.puff(this, this.player.x, this.player.y - 8, 0x7cfc98, this.player.y)
+      Audio.play(this, SFX.crit, { volume: 0.6 })
+      this.flashBanner('charm shattered!', '#7cfc98')
+      return true
+    }
+    return false
   }
 
   killFireball(f) {
@@ -914,12 +991,14 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.hudFloor = pixelText(this, 10, 8, '', 9, '#ffe066').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     this.hudHint = pixelText(this, 10, 24, '', 7, '#8ea0c0').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     this.hudBest = pixelText(this, GAME_WIDTH - 10, 8, '', 7, '#7c84a0').setOrigin(1, 0).setScrollFactor(0).setDepth(11000)
+    this.hudCharm = pixelText(this, 10, 40, '', 7, '#7cfc98').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
     this.bossHud = null
   }
 
   updateHud() {
     this.hudFloor.setText(`FLOOR ${this.floor}`)
     this.hudBest.setText(`deepest: ${SaveSystem.data.challenge.bestDepth}`)
+    this.hudCharm.setText(this.charm ? '✦ charm ready' : '')
     this.hudHint.setText(
       this.phase === 'boss'
         ? 'ATK: strike  ·  GRAB: catch + hurl'
@@ -960,6 +1039,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       for (const h of this.hunters) h.think(dt)
       this.updateRoom()
       this.handleMelee(dt)
+      this.checkTreasure()
       if (this.phase === 'boss') {
         this.updateBoss(dt)
         this.handleEmber(dt)
