@@ -6,24 +6,30 @@ import { CombatSystem } from '../systems/CombatSystem.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
 import { TouchState } from '../systems/TouchState.js'
 import { showTouchControls, hideTouchControls } from '../ui/touchControls.js'
-import Hunter, { SENSES, SKINS } from '../systems/Hunter.js'
+import Hunter from '../systems/Hunter.js'
 import { ensureHuntLights, LIGHT_RADIUS, SMALL_LIGHT, TORCH_LIGHT } from '../utils/lights.js'
 import { HEROES } from './NightHunt.js'
+import { generateFloor } from '../dungeon/FloorGen.js'
 
 // ============================================================================
-// DUNGEON CRAWL — Night Hunt's "Challenge" mode.
-// A hybrid stealth + boss-arena descent. Each floor: sneak past patrolling
-// hunters in the dark to reach the sealed boss chamber, beat the boss with the
-// Emberhand (catch its hurled projectile, throw it back), take the stairs down.
-// Wanderer-only — the lantern is both your light and your liability. Reuses
-// Night Hunt's arena/fog/Hunter AI and a top-down take on the Finale's Emberhand.
+// DUNGEON CRAWL — Night Hunt's "Challenge" mode (v2: room-by-room).
+// A floor is a graph of discrete rooms (start / combat / treasure / boss) laid
+// out in one world; you move door to door. Combat rooms seal on entry and you
+// clear them with a melee strike (silent-kills the unaware); the boss room caps
+// the floor with the Emberhand fight; stairs descend. Wanderer-only; the lantern
+// is your only light. Reuses Hunter AI, fog/lights, the Finale's Emberhand.
 // ============================================================================
 
 const TILE = 24
-const WORLD_COLS = 50
-const WORLD_ROWS = 34
-const WORLD_W = WORLD_COLS * TILE // 1200
-const WORLD_H = WORLD_ROWS * TILE // 816
+const ROOM_COLS = 30
+const ROOM_ROWS = 18
+const ROOM_W = ROOM_COLS * TILE // 720 — a touch larger than the viewport so the camera pans within a room
+const ROOM_H = ROOM_ROWS * TILE // 432
+const GRID = 5
+const WORLD_W = GRID * ROOM_W // 3600
+const WORLD_H = GRID * ROOM_H // 2160
+const WALL_T = 16 // wall thickness
+const DOOR_HALF = 26 // half the door-gap width
 
 const WALK_SPEED = 96
 const SPRINT_SPEED = 168
@@ -32,20 +38,18 @@ const STAM_DRAIN = 0.55
 const STAM_REGEN = 0.4
 const STAM_FLOOR = 0.25
 
-const GATE_RADIUS = 34
 const STAIRS_RADIUS = 30
 const CATCH_RADIUS = 40 // Emberhand grab range
 const EMBER_ORBIT = 22
 const THROW_SPEED = 300
 const RUBBLE_SPEED = 150 // boss hurl speed — slow enough to read + catch
-const BLAST_RADIUS = 120 // lantern ward — staggers nearby creatures
-const BLAST_CD = 3 // ward cooldown (seconds)
-const KILL_RANGE = 34 // stealth-kill reach
+const MELEE_REACH = 50
+const MELEE_CD = 0.32
+const HUNTER_HP = 2
 
-// Boss roster (config-driven so campaign floors can swap in the stalkers later).
-// The Gargoyle has a full custom anim set (idle/hurl/smash/hurt/death). The stalkers
-// reuse their walk loop as idle and a tinted wind-up as the hurl telegraph; every
-// boss throws a catchable projectile so the Emberhand works on all of them.
+// Boss roster (config-driven). The Gargoyle has a full custom anim set; the
+// stalkers reuse their walk loop as idle + a tinted wind-up telegraph. Every boss
+// throws a catchable projectile so the Emberhand works on all of them.
 const BOSSES = {
   gargoyle: { tex: 'gargoyle-idle', idle: 'gargoyle-idle', death: 'gargoyle-death', name: 'THE GARGOYLE GUARDIAN', hp: 5, scale: 1.0, body: [44, 34], proj: 'gargoyle-rubble', projScale: 1, hurl: 'gargoyle-hurl', smash: 'gargoyle-smash', hurt: 'gargoyle-hurt', verb: 'the guardian crushed you' },
   demon: { tex: 'demon-walk', idle: 'demon-walk', death: 'demon-death', name: 'THE HORNED STALKER', hp: 3, scale: 1.6, body: [40, 30], proj: 'venom', projScale: 1.4, verb: 'the stalker gored you' },
@@ -74,8 +78,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
     // ---- state ----
     this.gameOver = false
-    this.phase = 'stealth' // 'stealth' | 'boss' | 'cleared'
-    this.spawn = { x: 90, y: WORLD_H / 2 }
+    this.phase = 'explore' // 'explore' | 'boss' | 'cleared'
     this.faceX = 1
     this.faceY = 0
     this.stamina = STAM_MAX
@@ -87,17 +90,19 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.scent = []
     this.hunters = []
     this.hunterColliders = []
-    this.fireballs = [] // catchable boss projectiles
-    this.bolts = [] // non-catchable hunter lunges (unused for now; reserved)
+    this.fireballs = []
     this.ember = null
     this._prevE = false
-    this._prevBlast = false
-    this.blastCd = 0
+    this._prevMelee = false
+    this.meleeCd = 0
     this._stepT = 0
     this.boss = null
+    this.bossRoom = null
     this.stairs = null
+    this.curRoom = null
+    this.activeCombat = null
     this.hivemindOn = false
-    // hunter-power multipliers Hunter.js reads (no per-floor modifiers yet)
+    // hunter-power multipliers Hunter.js reads
     this.senseRangeMul = 1
     this.hearRangeMul = 1
     this.awareUpMul = 1
@@ -106,10 +111,12 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.moveMul = 1
     this.loudMul = 1
 
-    this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
-    this.buildArena()
-    this.buildPlayer()
+    this.wallZones = []
+    this.wallRects = []
+    this.buildFloor()
 
+    this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
+    this.buildPlayer()
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
 
@@ -117,82 +124,104 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,UP,DOWN,LEFT,RIGHT')
-    showTouchControls({ jump: 'RUN', attack: 'USE', heavy: 'WARD' })
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,J,TAB,UP,DOWN,LEFT,RIGHT')
+    showTouchControls({ jump: 'RUN', attack: 'ATK', heavy: 'GRAB' })
     this.events.once('shutdown', () => hideTouchControls())
 
     Music.play(this, 'bgm-main')
-    this.startFloor()
+    this.curRoom = this.roomAt(this.spawn.x, this.spawn.y)
+    if (this.curRoom) this.curRoom.visited = true
+    this.floorBanner(`FLOOR ${this.floor}`, this.cfg().name)
   }
 
   cfg() {
     if (this.floor <= FLOORS.length) return FLOORS[this.floor - 1]
-    // endless descent: cycle the campaign bosses under a generic name
     const base = FLOORS[(this.floor - 1) % FLOORS.length]
     return { name: `DESCENT ${this.floor}`, boss: base.boss, hunters: base.hunters }
   }
 
-  // ---- arena (dungeon-skinned) ----------------------------------------------
-  buildArena() {
-    // flat flagstone floor drawn once into a render texture
-    const g = this.add.graphics()
-    g.fillStyle(0x23252f, 1).fillRect(0, 0, WORLD_W, WORLD_H)
-    g.lineStyle(1, 0x191b23, 1)
-    for (let c = 0; c <= WORLD_COLS; c++) g.lineBetween(c * TILE, 0, c * TILE, WORLD_H)
-    for (let r = 0; r <= WORLD_ROWS; r++) g.lineBetween(0, r * TILE, WORLD_W, r * TILE)
-    // a few darker flagstones for texture
-    for (let i = 0; i < 80; i++) {
-      const c = Phaser.Math.Between(0, WORLD_COLS - 1)
-      const r = Phaser.Math.Between(0, WORLD_ROWS - 1)
-      g.fillStyle(0x1e2028, 1).fillRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE - 2)
+  // ---- floor / rooms --------------------------------------------------------
+  buildFloor() {
+    this.floorData = generateFloor(this.floor, () => Phaser.Math.RND.frac())
+    for (const r of this.floorData.rooms.values()) {
+      r.bounds = new Phaser.Geom.Rectangle(r.gx * ROOM_W, r.gy * ROOM_H, ROOM_W, ROOM_H)
     }
-    g.setDepth(0)
-    // cold stone wash so the lantern pool reads
-    this.add.rectangle(0, 0, WORLD_W, WORLD_H, 0x0a0c16, 0.45).setOrigin(0, 0).setDepth(1)
+    const start = this.floorData.rooms.get(this.floorData.startId)
+    this.spawn = { x: start.bounds.centerX, y: start.bounds.centerY }
 
-    this.wallZones = []
-    this.wallRects = []
-
-    // perimeter wall of stone blocks
-    for (let x = 14; x < WORLD_W; x += 40) {
-      this.addObstacle(x, 30, 'hunt-big_stone', true)
-      this.addObstacle(x, WORLD_H - 6, 'hunt-big_stone', true)
-    }
-    for (let y = 60; y < WORLD_H - 40; y += 40) {
-      this.addObstacle(14, y, 'hunt-big_stone', true)
-      this.addObstacle(WORLD_W - 14, y, 'hunt-big_stone', true)
-    }
-
-    // interior pillars/rubble — cover to sneak behind (kept clear of spawn + boss chamber)
-    const props = ['hunt-big_stone', 'hunt-mid_stone', 'hunt-mid_stone', 'hunt-skull']
-    for (let i = 0; i < 24; i++) {
-      const x = Phaser.Math.Between(220, WORLD_W - 320)
-      const y = Phaser.Math.Between(110, WORLD_H - 110)
-      if (Phaser.Math.Distance.Between(x, y, this.spawn.x, this.spawn.y) < 150) continue
-      this.addObstacle(x, y, Phaser.Utils.Array.GetRandom(props))
-    }
-
-    // open points for hunter patrol / placement
-    this.openPoints = []
-    for (let x = 120; x < WORLD_W - 120; x += 56) {
-      for (let y = 90; y < WORLD_H - 90; y += 56) {
-        if (!this.wallRects.some((rr) => rr.contains(x, y))) this.openPoints.push({ x, y })
-      }
-    }
-
-    // boss chamber sits at the right; the gate is the stealth objective
-    this.bossSpot = { x: WORLD_W - 150, y: WORLD_H / 2 }
+    // floor + walls per room
+    const floorG = this.add.graphics().setDepth(0)
+    for (const r of this.floorData.rooms.values()) this.drawRoomFloor(floorG, r)
+    for (const r of this.floorData.rooms.values()) this.buildRoomWalls(r)
   }
 
-  addObstacle(x, y, key, border = false) {
-    const img = this.add.image(x, y, key).setOrigin(0.5, 1).setDepth(border ? 4 : y)
-    if (border) img.setTint(0x6b7180)
-    const w = img.width
-    const h = img.height
-    const rect = this.add.rectangle(x, y - 7, w * 0.5, 12, 0x000000, 0).setVisible(false)
+  drawRoomFloor(g, room) {
+    const b = room.bounds
+    g.fillStyle(0x23252f, 1).fillRect(b.x, b.y, b.width, b.height)
+    g.lineStyle(1, 0x191b23, 1)
+    for (let c = 0; c <= ROOM_COLS; c++) g.lineBetween(b.x + c * TILE, b.y, b.x + c * TILE, b.bottom)
+    for (let rr = 0; rr <= ROOM_ROWS; rr++) g.lineBetween(b.x, b.y + rr * TILE, b.right, b.y + rr * TILE)
+    for (let i = 0; i < 26; i++) {
+      const c = Phaser.Math.Between(0, ROOM_COLS - 1)
+      const rr = Phaser.Math.Between(0, ROOM_ROWS - 1)
+      g.fillStyle(0x1e2028, 1).fillRect(b.x + c * TILE + 1, b.y + rr * TILE + 1, TILE - 2, TILE - 2)
+    }
+    // cold wash so the lantern reads
+    this.add.rectangle(b.x, b.y, b.width, b.height, 0x0a0c16, 0.45).setOrigin(0, 0).setDepth(1)
+  }
+
+  // Solid wall along each edge, leaving a centred gap where a door connects.
+  buildRoomWalls(room) {
+    const b = room.bounds
+    const D = DOOR_HALF
+    room.doorGaps = []
+    const horiz = [{ dir: 'n', y: b.y }, { dir: 's', y: b.bottom }]
+    for (const e of horiz) {
+      if (room.doors[e.dir]) {
+        const gx = b.centerX
+        const lw = gx - D - b.x
+        if (lw > 0) this.addWall(b.x + lw / 2, e.y, lw, WALL_T)
+        const rw = b.right - (gx + D)
+        if (rw > 0) this.addWall(b.right - rw / 2, e.y, rw, WALL_T)
+        room.doorGaps.push({ cx: gx, cy: e.y, w: 2 * D, h: WALL_T })
+      } else {
+        this.addWall(b.centerX, e.y, b.width + WALL_T, WALL_T)
+      }
+    }
+    const vert = [{ dir: 'w', x: b.x }, { dir: 'e', x: b.right }]
+    for (const e of vert) {
+      if (room.doors[e.dir]) {
+        const gy = b.centerY
+        const th = gy - D - b.y
+        if (th > 0) this.addWall(e.x, b.y + th / 2, WALL_T, th)
+        const bh = b.bottom - (gy + D)
+        if (bh > 0) this.addWall(e.x, b.bottom - bh / 2, WALL_T, bh)
+        room.doorGaps.push({ cx: e.x, cy: gy, w: WALL_T, h: 2 * D })
+      } else {
+        this.addWall(e.x, b.centerY, WALL_T, b.height + WALL_T)
+      }
+    }
+  }
+
+  // A static wall rectangle (collider + LOS blocker + simple stone visual).
+  addWall(cx, cy, w, h) {
+    const rect = this.add.rectangle(cx, cy, w, h, 0x2a2d3a).setDepth(cy)
+    rect.setStrokeStyle(1, 0x444b5e, 0.6)
     this.physics.add.existing(rect, true)
     this.wallZones.push(rect)
-    this.wallRects.push(new Phaser.Geom.Rectangle(x - w * 0.32, y - h * 0.7, w * 0.64, h * 0.62))
+    this.wallRects.push(new Phaser.Geom.Rectangle(cx - w / 2, cy - h / 2, w, h))
+    return rect
+  }
+
+  roomAt(x, y) {
+    for (const r of this.floorData.rooms.values()) if (r.bounds.contains(x, y)) return r
+    return null
+  }
+
+  randomPointInRoom(room) {
+    const b = room.bounds
+    const m = 44
+    return { x: Phaser.Math.Between(b.x + m, b.right - m), y: Phaser.Math.Between(b.y + m, b.bottom - m) }
   }
 
   // ---- player (Wanderer) ----------------------------------------------------
@@ -206,38 +235,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.player.body.setSize(h.body[0], h.body[1])
     if (h.off) this.player.body.setOffset(h.off[0], h.off[1])
     this.physics.add.collider(this.player, this.wallZones)
-    // lantern glow the Wanderer always carries
     this.carryFlame = this.add.ellipse(this.spawn.x, this.spawn.y, 8, 13, 0xffd86b, 1)
-  }
-
-  // ---- floor setup ----------------------------------------------------------
-  startFloor() {
-    const cfg = this.cfg()
-    // difficulty scales past the authored campaign
-    const over = Math.max(0, this.floor - FLOORS.length)
-    this.senseRangeMul = 1 + over * 0.08
-    this.chaseSpeedMul = 1 + over * 0.05
-
-    // hunters between you and the gate
-    const list = [...cfg.hunters]
-    for (let i = 0; i < over; i++) list.push(['ooze', i % 2 ? 'hearing' : 'sight']) // endless adds stalkers
-    const pool = Phaser.Utils.Array.Shuffle(
-      this.openPoints.filter((p) => p.x > 300 && Phaser.Math.Distance.Between(p.x, p.y, this.spawn.x, this.spawn.y) > 240)
-    )
-    list.forEach(([skin, sense], i) => {
-      const pt = pool[i] || { x: WORLD_W / 2, y: WORLD_H / 2 }
-      const hn = new Hunter(this, pt.x, pt.y, skin, sense)
-      this.hunters.push(hn)
-      this.hunterColliders.push(this.physics.add.collider(hn, this.wallZones))
-      this.physics.add.overlap(this.player, hn, () => this.caughtByHunter(hn))
-    })
-
-    // the gate — a glowing sealed door at the boss chamber entrance
-    this.gate = this.add.image(WORLD_W - 280, WORLD_H / 2, 'hunt-sign').setOrigin(0.5, 1).setDepth(WORLD_H / 2).setScale(1.4).setTint(0xffd24a)
-    this.tweens.add({ targets: this.gate, scaleX: 1.55, scaleY: 1.3, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.easeInOut' })
-    this.gateGlow = this.add.ellipse(this.gate.x, this.gate.y - 16, 60, 40, 0xffb24a, 0.25).setDepth(3)
-
-    this.floorBanner(`FLOOR ${this.floor}`, cfg.name)
   }
 
   floorBanner(line1, line2) {
@@ -248,7 +246,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
   // ---- Hunter.js scene contract ---------------------------------------------
   playerLit() {
-    return true // the lantern is always lit
+    return true
   }
 
   losClear(ax, ay, bx, by) {
@@ -263,13 +261,12 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   smellQuery() {
-    return null // no smell hunters in the dungeon
+    return null
   }
 
-  randomPatrolPoint(fromX, fromY, radius) {
-    const near = this.openPoints.filter((p) => Phaser.Math.Distance.Between(p.x, p.y, fromX, fromY) < radius)
-    const pool = near.length ? near : this.openPoints
-    return pool.length ? Phaser.Utils.Array.GetRandom(pool) : { x: fromX, y: fromY }
+  randomPatrolPoint(fromX, fromY) {
+    const room = this.roomAt(fromX, fromY)
+    return room ? this.randomPointInRoom(room) : { x: fromX, y: fromY }
   }
 
   flashBanner(text, color) {
@@ -277,7 +274,6 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 0, y: GAME_HEIGHT / 2 - 86, duration: 1000, onComplete: () => t.destroy() })
   }
 
-  // a chasing hunter lunges instead of firing — contact is the kill (handled by overlap)
   spawnHunterAttack(h) {
     const a = Math.atan2(this.player.y - h.y, this.player.x - h.x)
     h.body.setVelocity(Math.cos(a) * 220, Math.sin(a) * 220)
@@ -285,25 +281,57 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.time.delayedCall(220, () => h.active && h.clearTint())
   }
 
-  caughtByHunter() {
-    if (this.gameOver || this.phase !== 'stealth') return
+  caughtByHunter(h) {
+    if (this.gameOver) return
+    if (h && h.mode !== 'CHASE') return // only an enraged hunter catches you
     if (this.consumeShield()) return
     this.playerDeath('the hunters took you')
   }
 
-  // ---- stealth-kill + lantern ward ------------------------------------------
-  // Execute the nearest UNAWARE hunter (patrolling / not yet locked on) in reach.
-  tryStealthKill() {
-    let best = null
-    let bd = KILL_RANGE
-    for (const h of this.hunters) {
-      if (h.mode === 'CHASE' || h.awareness >= 0.45) continue
-      const d = Phaser.Math.Distance.Between(h.x, h.y, this.player.x, this.player.y)
-      if (d < bd) { bd = d; best = h }
+  // ---- melee (basic; W upgrades the visuals + tuning later) ------------------
+  handleMelee(dt) {
+    this.meleeCd = Math.max(0, this.meleeCd - dt)
+    const pressed = this.keys.SPACE.isDown || this.keys.J.isDown || TouchState.attackL
+    const edge = pressed && !this._prevMelee
+    this._prevMelee = pressed
+    if (edge && this.meleeCd <= 0) this.doMelee()
+  }
+
+  doMelee() {
+    this.meleeCd = MELEE_CD
+    let dx = this.faceX
+    let dy = this.faceY
+    if (dx === 0 && dy === 0) { dx = this.player.flipX ? -1 : 1; dy = 0 }
+    const l = Math.hypot(dx, dy) || 1
+    dx /= l
+    dy /= l
+    const hx = this.player.x + dx * MELEE_REACH * 0.55
+    const hy = this.player.y + dy * MELEE_REACH * 0.55
+    const arc = this.add.circle(hx, hy, 16, 0xfff0c0, 0.5).setDepth(this.player.y + 2)
+    this.tweens.add({ targets: arc, scale: 1.7, alpha: 0, duration: 150, onComplete: () => arc.destroy() })
+    Audio.play(this, SFX.slash, { volume: 0.5, rate: 1.15 })
+    for (const h of [...this.hunters]) {
+      const tdx = h.x - this.player.x
+      const tdy = h.y - this.player.y
+      const td = Math.hypot(tdx, tdy)
+      if (td > MELEE_REACH) continue
+      if ((tdx / (td || 1)) * dx + (tdy / (td || 1)) * dy < 0.15) continue // must be in front (~80°)
+      const unaware = h.mode !== 'CHASE' && h.awareness < 0.45
+      if (unaware) this.banishHunter(h, true) // silent kill
+      else this.damageHunter(h, 1)
     }
-    if (!best) return
-    this.banishHunter(best, true)
-    this.flashBanner('silent kill', '#7cfc98')
+  }
+
+  damageHunter(h, dmg) {
+    h.hp = (h.hp ?? HUNTER_HP) - dmg
+    h.setTint(0xffffff)
+    this.time.delayedCall(80, () => h.active && h.clearTint())
+    if (h.hp <= 0) {
+      this.banishHunter(h, false)
+    } else {
+      Audio.play(this, SFX.enemyHit, { volume: 0.6 })
+      h.distract(this.player.x, this.player.y) // knock it out of a chase briefly
+    }
   }
 
   banishHunter(h, silent) {
@@ -328,39 +356,81 @@ export default class DungeonCrawl extends Phaser.Scene {
     }
   }
 
-  // Lantern ward: a short-range light-blast that staggers nearby creatures and
-  // jolts the boss out of its rhythm. Light vs. the dungeon dark.
-  handleBlast(dt) {
-    this.blastCd = Math.max(0, this.blastCd - dt)
-    const pressed = this.keys.SPACE.isDown || TouchState.attackH
-    const edge = pressed && !this._prevBlast
-    this._prevBlast = pressed
-    if (edge && this.blastCd <= 0) this.doBlast()
+  // ---- room flow ------------------------------------------------------------
+  updateRoom() {
+    const r = this.roomAt(this.player.x, this.player.y)
+    if (r && r !== this.curRoom) {
+      this.curRoom = r
+      this.onEnterRoom(r)
+    }
   }
 
-  doBlast() {
-    this.blastCd = BLAST_CD
-    const px = this.player.x
-    const py = this.player.y - 6
-    const ring = this.add.circle(px, py, 10, 0xffe6a0, 0.5).setDepth(py + 2)
-    this.tweens.add({ targets: ring, radius: BLAST_RADIUS, alpha: 0, duration: 380, onComplete: () => ring.destroy() })
-    Audio.play(this, SFX.clear, { volume: 0.7 })
-    CombatSystem.puff(this, px, py, 0xffe6a0, py + 1)
-    // stagger nearby hunters — frozen long enough to slip past
-    for (const h of this.hunters) {
-      if (Phaser.Math.Distance.Between(h.x, h.y, px, py) > BLAST_RADIUS) continue
-      h.mode = 'STUNNED'
-      h.stunTimer = 2.5
-      h.awareness = 0
-      h.setTint(0xffe6a0)
-      this.time.delayedCall(220, () => h.active && h.clearTint())
+  onEnterRoom(room) {
+    const firstVisit = !room.visited
+    room.visited = true
+    if (room.cleared) return
+    if (room.type === 'boss') this.startBoss(room)
+    else if (room.type === 'combat' && firstVisit) this.startCombat(room)
+    else if (room.type === 'treasure') this.enterTreasure(room)
+  }
+
+  startCombat(room) {
+    this.activeCombat = room
+    setUiMood(this, 'danger')
+    this.sealRoom(room)
+    const cfg = this.cfg()
+    const n = Math.min(2 + Math.floor(this.floor / 2), 5)
+    for (let i = 0; i < n; i++) {
+      const [skin, sense] = cfg.hunters[i % cfg.hunters.length]
+      const p = this.randomPointInRoom(room)
+      const hn = new Hunter(this, p.x, p.y, skin, sense)
+      hn.hp = HUNTER_HP
+      hn.room = room
+      hn.awareness = 0.9 // it's a fight — they engage fast
+      hn.mode = 'SUSPICIOUS'
+      hn.lastCue = { x: this.player.x, y: this.player.y }
+      this.hunters.push(hn)
+      this.hunterColliders.push(this.physics.add.collider(hn, this.wallZones))
+      this.physics.add.overlap(this.player, hn, () => this.caughtByHunter(hn))
     }
-    // jolt the boss: delay its next action + a brief flinch tint
-    if (this.boss && this.boss.state !== 'dead' && Phaser.Math.Distance.Between(this.boss.x, this.boss.y, px, py) < BLAST_RADIUS + 50) {
-      this.boss.actT = Math.max(this.boss.actT, 1.4)
-      this.boss.setTint(0xffe6a0)
-      this.time.delayedCall(240, () => this.boss?.active && this.boss.clearTint())
+    Audio.play(this, SFX.heavy, { volume: 0.5, rate: 1.2 })
+  }
+
+  sealRoom(room) {
+    room.seals = []
+    for (const g of room.doorGaps) {
+      const rect = this.add.rectangle(g.cx, g.cy, g.w, g.h, 0x2a2030).setDepth(g.cy)
+      rect.setStrokeStyle(2, 0xff5a2a, 0.7)
+      this.physics.add.existing(rect, true)
+      this.wallZones.push(rect)
+      room.seals.push(rect)
     }
+  }
+
+  unsealRoom(room) {
+    for (const s of room.seals || []) {
+      const i = this.wallZones.indexOf(s)
+      if (i >= 0) this.wallZones.splice(i, 1)
+      s.destroy()
+    }
+    room.seals = []
+  }
+
+  checkCombatClear() {
+    const room = this.activeCombat
+    if (!room) return
+    if (this.hunters.some((h) => h.room === room)) return
+    room.cleared = true
+    this.activeCombat = null
+    this.unsealRoom(room)
+    setUiMood(this, 'calm')
+    Audio.play(this, SFX.clear, { volume: 0.6 })
+    this.flashBanner('room cleared', '#7cfc98')
+  }
+
+  enterTreasure(room) {
+    // R+A3 (Task 9) fills this with a pickup; for now the room is a safe passage.
+    room.cleared = true
   }
 
   // ---- player movement ------------------------------------------------------
@@ -424,29 +494,16 @@ export default class DungeonCrawl extends Phaser.Scene {
       .setScale(1, 1 + 0.18 * Math.sin(time / 110))
   }
 
-  // ---- stealth -> boss ------------------------------------------------------
-  checkGate() {
-    if (this.phase !== 'stealth') return
-    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.gate.x, this.gate.y - 12) < GATE_RADIUS) {
-      this.startBoss()
-    }
-  }
-
-  startBoss() {
+  // ---- boss room ------------------------------------------------------------
+  startBoss(room) {
     this.phase = 'boss'
-    // seal the chamber: clamp the camera to the right end, wall off behind
-    this.gate.destroy()
-    this.gateGlow.destroy()
-    const wallX = WORLD_W - 360
-    for (let y = 40; y < WORLD_H - 20; y += 38) this.addObstacle(wallX, y, 'hunt-big_stone', true)
-    // the gate seals behind you — freeze the stealth hunters and clear their rings
-    for (const h of this.hunters) { h.mode = 'PATROL'; h.awareness = 0; h.body.setVelocity(0, 0); h.meter.clear() }
-
+    this.bossRoom = room
+    this.sealRoom(room)
     const cfg = this.cfg()
     const b = BOSSES[cfg.boss]
     this.bossCfg = b
     const over = Math.max(0, this.floor - FLOORS.length)
-    const boss = this.physics.add.sprite(this.bossSpot.x, this.bossSpot.y, b.tex).setScale(b.scale).setOrigin(0.5, 0.7)
+    const boss = this.physics.add.sprite(room.bounds.centerX, room.bounds.centerY, b.tex).setScale(b.scale).setOrigin(0.5, 0.7)
     boss.play(b.idle)
     boss.body.setAllowGravity(false)
     boss.body.setSize(b.body[0], b.body[1])
@@ -456,6 +513,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     boss.actT = 1.4
     boss.invuln = 0
     this.boss = boss
+    this.physics.add.collider(boss, this.wallZones)
     this.physics.add.overlap(this.player, boss, () => this.bossTouch())
 
     Music.play(this, 'bgm-boss', { fade: 500 })
@@ -464,7 +522,6 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildBossHud()
   }
 
-  // ---- boss AI --------------------------------------------------------------
   updateBoss(dt) {
     const b = this.boss
     if (!b || b.state === 'dead') return
@@ -473,9 +530,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     const d = Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y)
     if (Math.abs(this.player.x - b.x) > 6) b.flipX = this.player.x < b.x
 
-    if (b.state === 'hurl' || b.state === 'smash' || b.state === 'hurt') return // locked in an action
+    if (b.state === 'hurl' || b.state === 'smash' || b.state === 'hurt') return
 
-    // creep slowly toward the player to keep pressure
     const a = Math.atan2(this.player.y - b.y, this.player.x - b.x)
     b.body.setVelocity(Math.cos(a) * 26, Math.sin(a) * 26)
 
@@ -500,7 +556,6 @@ export default class DungeonCrawl extends Phaser.Scene {
       b.play(this.bossCfg.hurl)
       b.once(`animationcomplete-${this.bossCfg.hurl}`, back)
     } else {
-      // stalker: a quick wind-up tint telegraph, then the throw
       b.setTint(0xffd24a)
       this.time.delayedCall(360, () => { if (b.active && b.state !== 'dead') b.clearTint() })
       this.time.delayedCall(380, back)
@@ -512,12 +567,10 @@ export default class DungeonCrawl extends Phaser.Scene {
     b.state = 'smash'
     b.body.setVelocity(0, 0)
     b.play(`${this.bossCfg.smash}`)
-    // telegraph ring at the slam point
     const ring = this.add.circle(b.x, b.y + 10, 12, 0xff5a3c, 0.18).setDepth(b.y - 1)
     this.tweens.add({ targets: ring, radius: 96, alpha: 0, duration: 620 })
     this.time.delayedCall(520, () => {
       if (b.state !== 'smash') return
-      // impact: hit if the player is within the shockwave
       if (!this.gameOver && Phaser.Math.Distance.Between(b.x, b.y + 10, this.player.x, this.player.y) < 100) {
         if (!this.consumeShield()) this.playerDeath(this.bossCfg.verb)
       }
@@ -534,8 +587,6 @@ export default class DungeonCrawl extends Phaser.Scene {
     })
   }
 
-  // a projectile sprite for the current boss — a spinning anim if it has one (rubble),
-  // else a static chunk/blob given angular spin
   makeProj(x, y) {
     const b = this.bossCfg
     const spr = this.physics.add.sprite(x, y, b.proj).setScale(b.projScale).setDepth(9000)
@@ -554,18 +605,12 @@ export default class DungeonCrawl extends Phaser.Scene {
     Audio.play(this, SFX.slash, { volume: 0.6, rate: 0.7 })
   }
 
-  // ---- Emberhand (catch / shield / throw) -----------------------------------
+  // ---- Emberhand (boss room) ------------------------------------------------
   handleEmber(dt) {
     if (this.gameOver) return
-    const pressed = this.keys.E.isDown || TouchState.attackL
+    const pressed = this.keys.E.isDown || TouchState.attackH
     const edge = pressed && !this._prevE
     this._prevE = pressed
-
-    // in the stealth phase, E executes an unaware hunter instead (no projectiles yet)
-    if (this.phase === 'stealth') {
-      if (edge) this.tryStealthKill()
-      return
-    }
 
     if (this.ember) {
       this._orbitA = (this._orbitA || 0) + dt * 5
@@ -574,7 +619,6 @@ export default class DungeonCrawl extends Phaser.Scene {
       return
     }
     if (!edge) return
-    // try to catch the nearest catchable boss projectile
     let best = null
     let bd = CATCH_RADIUS
     for (const f of this.fireballs) {
@@ -588,7 +632,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (this.anims.exists(this.bossCfg.proj)) this.ember.play(this.bossCfg.proj)
     Audio.play(this, SFX.clear, { volume: 0.5, rate: 1.3 })
     CombatSystem.puff(this, this.player.x, this.player.y - 8, 0xffd24a, this.player.y)
-    this.flashBanner('caught! — E to hurl', '#ffd24a')
+    this.flashBanner('caught! — GRAB to hurl', '#ffd24a')
   }
 
   throwEmber() {
@@ -629,13 +673,11 @@ export default class DungeonCrawl extends Phaser.Scene {
         this.killFireball(f)
         continue
       }
-      // a thrown ember that reaches the boss damages it
       if (f.thrown && this.boss && this.boss.state !== 'dead' && Phaser.Math.Distance.Between(s.x, s.y, this.boss.x, this.boss.y - 8) < 44) {
         this.killFireball(f)
         this.bossHit()
         continue
       }
-      // an uncaught boss projectile that reaches the player hits
       if (f.catchable && !f.thrown && !this.gameOver && Phaser.Math.Distance.Between(s.x, s.y, this.player.x, this.player.y) < 18) {
         this.killFireball(f)
         if (!this.consumeShield()) this.playerDeath('struck down — catch it next time')
@@ -673,7 +715,6 @@ export default class DungeonCrawl extends Phaser.Scene {
         b.actT = 0.8
       })
     } else {
-      // stalker: a quick flinch tint, stay in the walk loop
       b.setTint(0xff8a8a)
       this.time.delayedCall(160, () => { if (b.active && b.state !== 'dead') b.clearTint() })
       b.actT = Math.max(b.actT, 0.6)
@@ -689,9 +730,9 @@ export default class DungeonCrawl extends Phaser.Scene {
     b.play(this.bossCfg.death)
     this.cameras.main.shake(360, 0.014)
     this.phase = 'cleared'
+    if (this.bossRoom) { this.bossRoom.cleared = true; this.unsealRoom(this.bossRoom) }
     setUiMood(this, 'calm')
     Music.play(this, 'bgm-main', { fade: 700 })
-    // record depth + the campaign-win flag (felling the Gargoyle on the final floor)
     const ch = SaveSystem.data.challenge
     if (this.floor > ch.bestDepth) ch.bestDepth = this.floor
     const finalFloor = this.floor === FLOORS.length
@@ -701,7 +742,8 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   spawnStairs(victory) {
-    this.stairs = this.add.image(this.bossSpot.x, this.bossSpot.y, 'hunt-sign').setOrigin(0.5, 1).setDepth(this.bossSpot.y).setScale(1.5).setTint(0x7cfc98)
+    const c = this.bossRoom ? this.bossRoom.bounds : { centerX: this.player.x, centerY: this.player.y }
+    this.stairs = this.add.image(c.centerX, c.centerY + 40, 'hunt-sign').setOrigin(0.5, 1).setDepth(c.centerY + 40).setScale(1.5).setTint(0x7cfc98)
     this.tweens.add({ targets: this.stairs, y: this.stairs.y - 4, yoyo: true, repeat: -1, duration: 600 })
     if (victory) this.floorBanner('THE DUNGEON IS CONQUERED', 'the endless descent opens below')
     else this.floorBanner('THE WAY IS CLEAR', 'descend the stairs')
@@ -759,7 +801,6 @@ export default class DungeonCrawl extends Phaser.Scene {
     const sx = this.player.x - cam.scrollX
     const sy = this.player.y - cam.scrollY
     this.fog.erase('hunt-light', sx - LIGHT_RADIUS, sy - LIGHT_RADIUS)
-    // the boss chamber is lit during the fight; chasers self-illuminate
     if (this.boss && this.boss.state !== 'dead') {
       this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX - TORCH_LIGHT, this.boss.y - cam.scrollY - TORCH_LIGHT)
     }
@@ -781,13 +822,14 @@ export default class DungeonCrawl extends Phaser.Scene {
   updateHud() {
     this.hudFloor.setText(`FLOOR ${this.floor}`)
     this.hudBest.setText(`deepest: ${SaveSystem.data.challenge.bestDepth}`)
-    const ward = this.blastCd > 0 ? ` (ward ${this.blastCd.toFixed(1)}s)` : '  ·  SPACE: ward'
     this.hudHint.setText(
       this.phase === 'boss'
-        ? `E: catch / hurl rubble${ward}`
+        ? 'ATK: strike  ·  GRAB: catch + hurl'
         : this.phase === 'cleared'
           ? 'take the stairs down'
-          : `reach the gate  ·  E: silent kill${ward}`
+          : this.activeCombat
+            ? 'ATK: strike  ·  clear the room'
+            : 'ATK: strike  ·  find the stairs'
     )
   }
 
@@ -817,13 +859,17 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (!this.player) return
     this.handlePlayer(dt, time)
     if (!this.gameOver) {
-      if (this.phase === 'stealth') for (const h of this.hunters) h.think(dt)
-      if (this.phase === 'stealth') this.checkGate()
-      if (this.phase === 'boss') this.updateBoss(dt)
+      for (const h of this.hunters) h.think(dt)
+      this.updateRoom()
+      this.handleMelee(dt)
+      if (this.phase === 'boss') {
+        this.updateBoss(dt)
+        this.handleEmber(dt)
+        this.updateProjectiles(dt)
+      } else {
+        this.checkCombatClear()
+      }
       if (this.phase === 'cleared') this.checkStairs()
-      this.handleEmber(dt)
-      this.handleBlast(dt)
-      this.updateProjectiles(dt)
     }
     this.updateHud()
     this.updateFog()
