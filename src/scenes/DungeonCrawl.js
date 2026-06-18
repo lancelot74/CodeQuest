@@ -10,6 +10,7 @@ import Hunter from '../systems/Hunter.js'
 import { ensureHuntLights, LIGHT_RADIUS, SMALL_LIGHT, TORCH_LIGHT } from '../utils/lights.js'
 import { HEROES } from './NightHunt.js'
 import { generateFloor } from '../dungeon/FloorGen.js'
+import Minimap from '../dungeon/Minimap.js'
 
 // ============================================================================
 // DUNGEON CRAWL — Night Hunt's "Challenge" mode (v2: room-by-room).
@@ -124,13 +125,15 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,J,TAB,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,J,TAB,M,UP,DOWN,LEFT,RIGHT')
+    this.input.keyboard.addCapture('TAB')
     showTouchControls({ jump: 'RUN', attack: 'ATK', heavy: 'GRAB' })
     this.events.once('shutdown', () => hideTouchControls())
 
     Music.play(this, 'bgm-main')
     this.curRoom = this.roomAt(this.spawn.x, this.spawn.y)
     if (this.curRoom) this.curRoom.visited = true
+    this.minimap = new Minimap(this, this.floorData)
     this.floorBanner(`FLOOR ${this.floor}`, this.cfg().name)
   }
 
@@ -362,6 +365,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (r && r !== this.curRoom) {
       this.curRoom = r
       this.onEnterRoom(r)
+      this.minimap?.refresh()
     }
   }
 
@@ -426,6 +430,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     setUiMood(this, 'calm')
     Audio.play(this, SFX.clear, { volume: 0.6 })
     this.flashBanner('room cleared', '#7cfc98')
+    this.minimap?.refresh()
   }
 
   enterTreasure(room) {
@@ -731,6 +736,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.cameras.main.shake(360, 0.014)
     this.phase = 'cleared'
     if (this.bossRoom) { this.bossRoom.cleared = true; this.unsealRoom(this.bossRoom) }
+    this.minimap?.refresh()
     setUiMood(this, 'calm')
     Music.play(this, 'bgm-main', { fade: 700 })
     const ch = SaveSystem.data.challenge
@@ -871,6 +877,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       }
       if (this.phase === 'cleared') this.checkStairs()
     }
+    this.minimap?.setFull(this.keys.TAB.isDown || this.keys.M.isDown)
     this.updateHud()
     this.updateFog()
   }
