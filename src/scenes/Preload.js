@@ -75,6 +75,11 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('gargoyle-hurt', 'assets/game/bosses/gargoyle-hurt.png', GARG)
     this.load.spritesheet('gargoyle-rubble', 'assets/game/bosses/gargoyle-rubble.png', { frameWidth: 32, frameHeight: 32 })
 
+    // Dungeon Crawl ancient props (Obsidian Ruins) — Higgsfield-generated set pieces.
+    for (const p of ['obelisk', 'brazier', 'statue', 'altar', 'rubble']) {
+      this.load.image(`dprop-${p}`, `assets/game/dungeon/${p}.png`)
+    }
+
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
     const HUNT = 'assets/game/hunt'

@@ -114,6 +114,7 @@ export default class DungeonCrawl extends Phaser.Scene {
 
     this.wallZones = []
     this.wallRects = []
+    this.braziers = []
     this.buildFloor()
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
@@ -157,6 +158,64 @@ export default class DungeonCrawl extends Phaser.Scene {
     for (const r of this.floorData.rooms.values()) this.drawRoomFloor(floorG, r)
     for (const r of this.floorData.rooms.values()) this.buildRoomWalls(r)
     for (const r of this.floorData.rooms.values()) this.addMoltenCracks(r)
+    for (const r of this.floorData.rooms.values()) this.placeProps(r)
+  }
+
+  // Scatter ancient set pieces per room — cover (obelisk/statue) + decor (altar/
+  // rubble) + one brazier that casts a light pool. Kept clear of the room centre
+  // (combat/boss spawn), the player spawn, and the door gaps.
+  placeProps(room) {
+    const defs = [
+      { key: 'dprop-obelisk', scale: 0.5, collide: true },
+      { key: 'dprop-statue', scale: 0.5, collide: true },
+      { key: 'dprop-altar', scale: 0.5, collide: false },
+      { key: 'dprop-rubble', scale: 0.55, collide: false },
+    ]
+    const used = []
+    const n = Phaser.Math.Between(2, 4)
+    for (let i = 0; i < n; i++) {
+      const spot = this.propSpot(room, used)
+      if (!spot) break
+      used.push(spot)
+      this.placeProp(spot.x, spot.y, Phaser.Utils.Array.GetRandom(defs))
+    }
+    const bp = this.propSpot(room, used)
+    if (bp) {
+      used.push(bp)
+      this.placeProp(bp.x, bp.y, { key: 'dprop-brazier', scale: 0.5, light: true })
+    }
+  }
+
+  propSpot(room, used) {
+    const b = room.bounds
+    for (let t = 0; t < 14; t++) {
+      const x = Phaser.Math.Between(b.x + 64, b.right - 64)
+      const y = Phaser.Math.Between(b.y + 64, b.bottom - 64)
+      if (Phaser.Math.Distance.Between(x, y, b.centerX, b.centerY) < 96) continue
+      if (Phaser.Math.Distance.Between(x, y, this.spawn.x, this.spawn.y) < 80) continue
+      if (used.some((u) => Phaser.Math.Distance.Between(x, y, u.x, u.y) < 64)) continue
+      return { x, y }
+    }
+    return null
+  }
+
+  placeProp(x, y, d) {
+    const img = this.add.image(x, y, d.key).setOrigin(0.5, 0.92).setScale(d.scale).setDepth(y)
+    if (d.collide) {
+      const w = img.displayWidth
+      const h = img.displayHeight
+      const rect = this.add.rectangle(x, y - 6, w * 0.5, 12, 0x000000, 0).setVisible(false)
+      this.physics.add.existing(rect, true)
+      this.wallZones.push(rect)
+      this.wallRects.push(new Phaser.Geom.Rectangle(x - w * 0.3, y - h * 0.7, w * 0.6, h * 0.6))
+    }
+    if (d.light) {
+      const ly = y - img.displayHeight * 0.5
+      this.add.ellipse(x, ly, 18, 13, 0xff7a3a, 0.7).setDepth(y + 1)
+      const flame = this.add.ellipse(x, ly - 3, 7, 12, 0xffd86b, 0.9).setDepth(y + 2)
+      this.tweens.add({ targets: flame, scaleY: 1.3, scaleX: 0.8, yoyo: true, repeat: -1, duration: 280, ease: 'Sine.easeInOut' })
+      this.braziers.push({ x, y: ly })
+    }
   }
 
   drawRoomFloor(g, room) {
@@ -837,6 +896,9 @@ export default class DungeonCrawl extends Phaser.Scene {
     const sx = this.player.x - cam.scrollX
     const sy = this.player.y - cam.scrollY
     this.fog.erase('hunt-light', sx - LIGHT_RADIUS, sy - LIGHT_RADIUS)
+    for (const br of this.braziers) {
+      this.fog.erase('hunt-torch-light', br.x - cam.scrollX - TORCH_LIGHT, br.y - cam.scrollY - TORCH_LIGHT)
+    }
     if (this.boss && this.boss.state !== 'dead') {
       this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX - TORCH_LIGHT, this.boss.y - cam.scrollY - TORCH_LIGHT)
     }
