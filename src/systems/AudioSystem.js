@@ -69,7 +69,13 @@ function musVol(scale = 1) {
 // outgoing loop would keep playing at mid-fade volume forever.
 function fade(scene, sound, to, ms, { stopAtEnd = false, ease } = {}) {
   if (!sound) return
+  // a destroyed Phaser sound has its manager nulled — never write volume to one
+  const dead = () => !sound || !sound.manager
+  // cancel any in-flight fade on this sound so two tweens don't fight (and so the
+  // loser doesn't write volume to a sound the winner already destroyed)
+  scene.tweens.killTweensOf(sound)
   const finalize = () => {
+    if (dead()) return
     if (stopAtEnd) sound.destroy()
     else sound.setVolume(to)
   }
@@ -81,7 +87,7 @@ function fade(scene, sound, to, ms, { stopAtEnd = false, ease } = {}) {
     ease,
     onComplete: () => {
       scene.events.off('shutdown', finalize)
-      if (stopAtEnd) sound.destroy()
+      if (stopAtEnd && !dead()) sound.destroy()
     },
   })
 }

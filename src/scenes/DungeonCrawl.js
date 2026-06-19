@@ -32,6 +32,7 @@ const WORLD_H = GRID * ROOM_H // 2160
 const WALL_T = 16 // wall thickness
 const DOOR_HALF = 26 // half the door-gap width
 
+const ZOOM = 1.5 // camera zoom so the art reads bigger
 const WALK_SPEED = 96
 const SPRINT_SPEED = 168
 const STAM_MAX = 1
@@ -124,6 +125,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildPlayer()
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
+    this.cameras.main.setZoom(ZOOM)
 
     ensureHuntLights(this)
     this.buildFog()
@@ -338,9 +340,19 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   floorBanner(line1, line2) {
-    const a = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 16, line1, 22, '#ffe066').setScrollFactor(0).setDepth(11000)
-    const b = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 14, line2, 10, '#cdd7ee').setScrollFactor(0).setDepth(11000)
+    const a = this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 16, line1, 22, '#ffe066').setScrollFactor(0).setDepth(11000))
+    const b = this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 14, line2, 10, '#cdd7ee').setScrollFactor(0).setDepth(11000))
     this.tweens.add({ targets: [a, b], alpha: 0, delay: 1700, duration: 900, onComplete: () => { a.destroy(); b.destroy() } })
+  }
+
+  // Counter the camera zoom for a screen-space (scrollFactor 0) UI object so it
+  // keeps its intended screen position + size despite cameras.main.setZoom(ZOOM).
+  fixUI(obj) {
+    const mx = GAME_WIDTH / 2
+    const my = GAME_HEIGHT / 2
+    obj.setPosition(mx + (obj.x - mx) / ZOOM, my + (obj.y - my) / ZOOM)
+    obj.setScale(obj.scaleX / ZOOM, obj.scaleY / ZOOM)
+    return obj
   }
 
   // ---- Hunter.js scene contract ---------------------------------------------
@@ -369,8 +381,8 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   flashBanner(text, color) {
-    const t = pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, text, 14, color).setScrollFactor(0).setDepth(11002)
-    this.tweens.add({ targets: t, alpha: 0, y: GAME_HEIGHT / 2 - 86, duration: 1000, onComplete: () => t.destroy() })
+    const t = this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, text, 14, color).setScrollFactor(0).setDepth(11002))
+    this.tweens.add({ targets: t, alpha: 0, y: t.y - 26 / ZOOM, duration: 1000, onComplete: () => t.destroy() })
   }
 
   spawnHunterAttack(h) {
@@ -970,28 +982,32 @@ export default class DungeonCrawl extends Phaser.Scene {
     const cam = this.cameras.main
     this.fog.clear()
     this.fog.fill(this.fogColor, 1)
-    const sx = this.player.x - cam.scrollX
-    const sy = this.player.y - cam.scrollY
+    // the fog is a screen-space overlay scaled by the camera zoom around the screen
+    // centre, so light positions need this offset to land on the right world point
+    const ox = (GAME_WIDTH / 2) * (ZOOM - 1) / ZOOM
+    const oy = (GAME_HEIGHT / 2) * (ZOOM - 1) / ZOOM
+    const sx = this.player.x - cam.scrollX + ox
+    const sy = this.player.y - cam.scrollY + oy
     this.fog.erase('hunt-light', sx - LIGHT_RADIUS, sy - LIGHT_RADIUS)
     for (const br of this.braziers) {
-      this.fog.erase('hunt-torch-light', br.x - cam.scrollX - TORCH_LIGHT, br.y - cam.scrollY - TORCH_LIGHT)
+      this.fog.erase('hunt-torch-light', br.x - cam.scrollX + ox - TORCH_LIGHT, br.y - cam.scrollY + oy - TORCH_LIGHT)
     }
     if (this.boss && this.boss.state !== 'dead') {
-      this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX - TORCH_LIGHT, this.boss.y - cam.scrollY - TORCH_LIGHT)
+      this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX + ox - TORCH_LIGHT, this.boss.y - cam.scrollY + oy - TORCH_LIGHT)
     }
     for (const h of this.hunters) {
       if (h.mode === 'CHASE' || this.gameOver) {
-        this.fog.erase('hunt-light-sm', h.x - cam.scrollX - SMALL_LIGHT, h.y - cam.scrollY - SMALL_LIGHT)
+        this.fog.erase('hunt-light-sm', h.x - cam.scrollX + ox - SMALL_LIGHT, h.y - cam.scrollY + oy - SMALL_LIGHT)
       }
     }
   }
 
   // ---- HUD ------------------------------------------------------------------
   buildHud() {
-    this.hudFloor = pixelText(this, 10, 8, '', 9, '#ffe066').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
-    this.hudHint = pixelText(this, 10, 24, '', 7, '#8ea0c0').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
-    this.hudBest = pixelText(this, GAME_WIDTH - 10, 8, '', 7, '#7c84a0').setOrigin(1, 0).setScrollFactor(0).setDepth(11000)
-    this.hudCharm = pixelText(this, 10, 40, '', 7, '#7cfc98').setOrigin(0, 0).setScrollFactor(0).setDepth(11000)
+    this.hudFloor = this.fixUI(pixelText(this, 10, 8, '', 9, '#ffe066').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
+    this.hudHint = this.fixUI(pixelText(this, 10, 24, '', 7, '#8ea0c0').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
+    this.hudBest = this.fixUI(pixelText(this, GAME_WIDTH - 10, 8, '', 7, '#7c84a0').setOrigin(1, 0).setScrollFactor(0).setDepth(11000))
+    this.hudCharm = this.fixUI(pixelText(this, 10, 40, '', 7, '#7cfc98').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
     this.bossHud = null
   }
 
@@ -1011,7 +1027,7 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   buildBossHud() {
-    this.bossHud = this.add.graphics().setScrollFactor(0).setDepth(11000)
+    this.bossHud = this.fixUI(this.add.graphics().setScrollFactor(0).setDepth(11000))
     this.updateBossHud()
   }
 

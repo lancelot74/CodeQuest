@@ -30,7 +30,7 @@ export default class Minimap {
       maxY = Math.max(maxY, r.gy)
     }
     this.gb = { minX, minY, maxX, maxY }
-    this.g = scene.add.graphics().setScrollFactor(0).setDepth(11050)
+    this.g = scene.fixUI(scene.add.graphics().setScrollFactor(0).setDepth(11050))
     this._full = false
     this.refresh()
   }
@@ -103,9 +103,9 @@ export default class Minimap {
     this._full = show
     if (show) {
       this.fullEls = []
-      const bg = this.scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05060c, 0.82).setOrigin(0, 0).setScrollFactor(0).setDepth(11900)
-      const fg = this.scene.add.graphics().setScrollFactor(0).setDepth(11901)
-      const title = pixelText(this.scene, GAME_WIDTH / 2, 40, `FLOOR ${this.scene.floor} MAP`, 12, '#ffe066').setScrollFactor(0).setDepth(11902)
+      const bg = this.scene.fixUI(this.scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05060c, 0.82).setOrigin(0, 0).setScrollFactor(0).setDepth(11900))
+      const fg = this.scene.fixUI(this.scene.add.graphics().setScrollFactor(0).setDepth(11901))
+      const title = this.scene.fixUI(pixelText(this.scene, GAME_WIDTH / 2, 40, `FLOOR ${this.scene.floor} MAP`, 12, '#ffe066').setScrollFactor(0).setDepth(11902))
       this.fullBg = bg
       this.fullG = fg
       this.fullEls.push(bg, fg, title)
