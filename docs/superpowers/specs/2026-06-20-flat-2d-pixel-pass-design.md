@@ -1,7 +1,7 @@
 # Challenge Mode — Flat-2D Pixel Pass + Camera Zoom
 
 **Date:** 2026-06-20
-**Status:** Approved design
+**Status:** ✅ **Shipped 2026-06-20.** Props regenerated flat (Higgsfield image-to-image), flat nine-slice UI panels hand-drawn, camera zoomed 1.5× with screen-space UI counter-transformed (`fixUI`) + fog light offset; also fixed a shared Music fade null-sound race. Verified via build + Playwright (room flow, boss, death overlay, HUD/minimap/boss-bar under zoom) + a real-keyboard playthrough, 0 errors.
 **Scope:** A polish pass on the Dungeon Crawl (Challenge mode): make the Higgsfield assets read as **flat 2D top-down** instead of 3D renders, and **zoom the camera in** so the art shows bigger. Not part of the R+A → W → B feature sequence; a visual-fidelity fix on what's already shipped.
 
 ## Problem
