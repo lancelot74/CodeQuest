@@ -76,6 +76,12 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('gargoyle-hurt', 'assets/game/bosses/gargoyle-hurt.png', GARG)
     this.load.spritesheet('gargoyle-rubble', 'assets/game/bosses/gargoyle-rubble.png', { frameWidth: 32, frameHeight: 32 })
 
+    // The Ember Brute (floor-1 dungeon boss, 96px) — reuses the molten rubble projectile.
+    this.load.spritesheet('brute-idle', 'assets/game/bosses/brute-idle.png', GARG)
+    this.load.spritesheet('brute-hurl', 'assets/game/bosses/brute-hurl.png', GARG)
+    this.load.spritesheet('brute-hurt', 'assets/game/bosses/brute-hurt.png', GARG)
+    this.load.spritesheet('brute-death', 'assets/game/bosses/brute-death.png', GARG)
+
     // Dungeon Crawl ancient props (Obsidian Ruins) — Higgsfield-generated set pieces.
     for (const p of ['obelisk', 'brazier', 'statue', 'altar', 'rubble']) {
       this.load.image(`dprop-${p}`, `assets/game/dungeon/${p}.png`)

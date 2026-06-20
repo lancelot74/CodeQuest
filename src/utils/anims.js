@@ -75,6 +75,14 @@ export function createEnemyAnimations(scene) {
     define(scene, 'gargoyle-hurl', 'gargoyle-hurl', 12, 0)
     define(scene, 'gargoyle-hurt', 'gargoyle-hurt', 14, 0)
   }
+
+  // The Ember Brute (floor-1 boss): idle loops; hurl/hurt one-shot; death holds on rubble.
+  if (scene.textures.exists('brute-idle')) {
+    define(scene, 'brute-idle', 'brute-idle', 6, -1)
+    define(scene, 'brute-death', 'brute-death', 10, 0)
+    define(scene, 'brute-hurl', 'brute-hurl', 12, 0)
+    define(scene, 'brute-hurt', 'brute-hurt', 14, 0)
+  }
 }
 
 function define(scene, key, sheetKey, frameRate, repeat) {
