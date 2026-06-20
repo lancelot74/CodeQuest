@@ -35,6 +35,10 @@ export function createCharacterAnimations(scene) {
   if (scene.textures.exists('hunt-lantern-sprint') && !scene.anims.exists('hunt-lantern-sprint')) {
     scene.anims.create({ key: 'hunt-lantern-sprint', frames: scene.anims.generateFrameNumbers('hunt-lantern-sprint'), frameRate: 14, repeat: -1 })
   }
+  // melee swing (Dungeon Crawl) — one-shot lantern strike
+  if (scene.textures.exists('hunt-lantern-attack') && !scene.anims.exists('hunt-lantern-attack')) {
+    scene.anims.create({ key: 'hunt-lantern-attack', frames: scene.anims.generateFrameNumbers('hunt-lantern-attack'), frameRate: 18, repeat: 0 })
+  }
 }
 
 // Enemy animations (marsh creatures: Ooze, Demon, Mage). Built once, like the

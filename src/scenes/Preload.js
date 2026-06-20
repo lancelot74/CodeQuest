@@ -65,6 +65,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.spritesheet('hunt-lantern-hit', 'assets/game/players/hunt-lantern/hit.png', LANT)
     this.load.spritesheet('hunt-lantern-death', 'assets/game/players/hunt-lantern/death.png', LANT)
     this.load.spritesheet('hunt-lantern-sprint', 'assets/game/players/hunt-lantern/sprint.png', LANT)
+    this.load.spritesheet('hunt-lantern-attack', 'assets/game/players/hunt-lantern/attack.png', LANT)
 
     // Dungeon final boss — the Gargoyle Guardian (96px strips) + its rubble projectile.
     const GARG = { frameWidth: 96, frameHeight: 96 }

@@ -416,9 +416,14 @@ export default class DungeonCrawl extends Phaser.Scene {
     const l = Math.hypot(dx, dy) || 1
     dx /= l
     dy /= l
+    // the Higgsfield lantern-swing animation (faces dx); handlePlayer holds it to the end
+    if (this.anims.exists(`${this.heroKey}-attack`)) {
+      if (Math.abs(dx) > 0.02) this.player.flipX = dx < 0
+      this.player.play(`${this.heroKey}-attack`)
+    }
     const hx = this.player.x + dx * MELEE_REACH * 0.55
     const hy = this.player.y + dy * MELEE_REACH * 0.55
-    const arc = this.add.circle(hx, hy, 16, 0xfff0c0, 0.5).setDepth(this.player.y + 2)
+    const arc = this.add.circle(hx, hy, 12, 0xfff0c0, 0.45).setDepth(this.player.y + 2)
     this.tweens.add({ targets: arc, scale: 1.7, alpha: 0, duration: 150, onComplete: () => arc.destroy() })
     Audio.play(this, SFX.slash, { volume: 0.5, rate: 1.15 })
     for (const h of [...this.hunters]) {
@@ -645,12 +650,16 @@ export default class DungeonCrawl extends Phaser.Scene {
       this.faceY = ay
       if (Math.abs(ax) > 0.02) this.player.flipX = ax < 0
     }
-    const want = !moving
-      ? `${this.heroKey}-idle`
-      : sprint && this.anims.exists(`${this.heroKey}-sprint`)
-        ? `${this.heroKey}-sprint`
-        : `${this.heroKey}-run`
-    if (this.player.anims.getName() !== want) this.player.play(want)
+    const anims = this.player.anims
+    const swinging = anims.isPlaying && anims.getName() === `${this.heroKey}-attack`
+    if (!swinging) {
+      const want = !moving
+        ? `${this.heroKey}-idle`
+        : sprint && this.anims.exists(`${this.heroKey}-sprint`)
+          ? `${this.heroKey}-sprint`
+          : `${this.heroKey}-run`
+      if (anims.getName() !== want) this.player.play(want)
+    }
 
     if (moving) {
       this._stepT -= dt
