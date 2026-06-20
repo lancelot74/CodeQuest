@@ -76,12 +76,14 @@ export function createEnemyAnimations(scene) {
     define(scene, 'gargoyle-hurt', 'gargoyle-hurt', 14, 0)
   }
 
-  // The Ember Brute (floor-1 boss): idle loops; hurl/hurt one-shot; death holds on rubble.
-  if (scene.textures.exists('brute-idle')) {
-    define(scene, 'brute-idle', 'brute-idle', 6, -1)
-    define(scene, 'brute-death', 'brute-death', 10, 0)
-    define(scene, 'brute-hurl', 'brute-hurl', 12, 0)
-    define(scene, 'brute-hurt', 'brute-hurt', 14, 0)
+  // New dungeon bosses (Ember Brute / Ashen Warlock / Magma Serpent): idle loops;
+  // hurl/hurt one-shot; death holds on the last frame.
+  for (const boss of ['brute', 'warlock', 'serpent']) {
+    if (!scene.textures.exists(`${boss}-idle`)) continue
+    define(scene, `${boss}-idle`, `${boss}-idle`, 6, -1)
+    define(scene, `${boss}-death`, `${boss}-death`, 10, 0)
+    define(scene, `${boss}-hurl`, `${boss}-hurl`, 12, 0)
+    define(scene, `${boss}-hurt`, `${boss}-hurt`, 14, 0)
   }
 }
 

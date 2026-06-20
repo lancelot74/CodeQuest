@@ -55,6 +55,8 @@ const HUNTER_HP = 2
 const BOSSES = {
   gargoyle: { tex: 'gargoyle-idle', idle: 'gargoyle-idle', death: 'gargoyle-death', name: 'THE GARGOYLE GUARDIAN', hp: 5, scale: 1.0, body: [44, 34], proj: 'gargoyle-rubble', projScale: 1, hurl: 'gargoyle-hurl', smash: 'gargoyle-smash', hurt: 'gargoyle-hurt', verb: 'the guardian crushed you' },
   brute: { tex: 'brute-idle', idle: 'brute-idle', death: 'brute-death', name: 'THE EMBER BRUTE', hp: 4, scale: 0.9, body: [42, 32], proj: 'gargoyle-rubble', projScale: 1, hurl: 'brute-hurl', hurt: 'brute-hurt', verb: 'the brute smashed you' },
+  warlock: { tex: 'warlock-idle', idle: 'warlock-idle', death: 'warlock-death', name: 'THE ASHEN WARLOCK', hp: 4, scale: 0.9, body: [34, 40], proj: 'gargoyle-rubble', projScale: 0.9, hurl: 'warlock-hurl', hurt: 'warlock-hurt', verb: 'the warlock burned you' },
+  serpent: { tex: 'serpent-idle', idle: 'serpent-idle', death: 'serpent-death', name: 'THE MAGMA SERPENT', hp: 5, scale: 1.0, body: [46, 34], proj: 'gargoyle-rubble', projScale: 1, hurl: 'serpent-hurl', hurt: 'serpent-hurt', verb: 'the serpent devoured you' },
   demon: { tex: 'demon-walk', idle: 'demon-walk', death: 'demon-death', name: 'THE HORNED STALKER', hp: 3, scale: 1.6, body: [40, 30], proj: 'venom', projScale: 1.4, verb: 'the stalker gored you' },
   mage: { tex: 'mage-walk', idle: 'mage-walk', death: 'mage-death', name: 'THE PALE MAGE', hp: 3, scale: 1.5, body: [36, 34], proj: 'venom', projScale: 1.2, verb: 'the mage blasted you' },
   ooze: { tex: 'ooze-walk', idle: 'ooze-walk', death: 'ooze-death', name: 'THE CREEPING OOZE', hp: 4, scale: 1.6, body: [44, 26], proj: 'venom', projScale: 1.6, verb: 'the ooze dissolved you' },
@@ -64,8 +66,8 @@ const BOSSES = {
 // endless escalating descent (cfg() cycles the bosses with scaled stats).
 const FLOORS = [
   { name: 'THE THRESHOLD', boss: 'brute', hunters: [['demon', 'sight']] },
-  { name: 'THE WHISPERING HALLS', boss: 'mage', hunters: [['mage', 'hearing'], ['demon', 'sight']] },
-  { name: 'THE SUNKEN VAULT', boss: 'ooze', hunters: [['ooze', 'sight'], ['mage', 'hearing']] },
+  { name: 'THE WHISPERING HALLS', boss: 'warlock', hunters: [['mage', 'hearing'], ['demon', 'sight']] },
+  { name: 'THE SUNKEN VAULT', boss: 'serpent', hunters: [['ooze', 'sight'], ['mage', 'hearing']] },
   { name: "THE GUARDIAN'S GATE", boss: 'gargoyle', hunters: [['demon', 'sight'], ['mage', 'hearing'], ['ooze', 'sight']] },
 ]
 
