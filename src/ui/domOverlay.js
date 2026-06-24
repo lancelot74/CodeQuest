@@ -24,6 +24,12 @@ const CSS = `
 .cq-opt{display:block;width:100%;text-align:left;margin:0 0 10px;background:#223052;color:#eaf1ff}
 .cq-opt:hover{background:#2e4070}
 .cq-opt.cq-wrong{background:#7a2f33;color:#ffd9d9;cursor:default}
+.cq-lore{font-size:13px;line-height:1.75;margin:0 0 18px;color:#ecdcb8;font-style:italic}
+.cq-chron-item{margin:0 0 14px;padding:0 0 12px;border-bottom:1px solid #2a3350}
+.cq-chron-title{font-family:"Press Start 2P",monospace;font-size:10px;color:#ffcf8a;margin:0 0 8px;line-height:1.5}
+.cq-chron-body{font-size:12px;line-height:1.6;color:#cdd7ee;margin:0}
+.cq-chron-locked .cq-chron-title{color:#5a6480}
+.cq-chron-body.locked{color:#6b7799;font-style:italic}
 `
 
 const TOKEN =
@@ -112,6 +118,90 @@ export function showLessonCard(lesson, onClose, badge = 'LESSON UNLOCKED') {
       <pre class="cq-code"><code>${highlight(lesson.code || '')}</code></pre>
       <div class="cq-foot">
         <button class="cq-btn">GOT IT</button>
+        <span class="cq-hint">Enter / Esc</span>
+      </div>
+    </div>`
+  document.body.appendChild(el)
+  overlayEl = el
+
+  const close = () => {
+    hideOverlay()
+    onClose?.()
+  }
+  el.querySelector('.cq-btn').addEventListener('click', close)
+  keyHandler = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      close()
+    }
+  }
+  window.addEventListener('keydown', keyHandler, true)
+  el.querySelector('.cq-btn').focus()
+}
+
+// A warden's lore chapter, revealed when its statue is awoken. Title + prose, no code.
+export function showLorePanel(chapter, onClose, badge = 'THE WARDEN SPEAKS') {
+  ensureStyles()
+  hideOverlay()
+
+  const el = document.createElement('div')
+  el.className = 'cq-overlay'
+  el.innerHTML = `
+    <div class="cq-card" role="dialog" aria-modal="true">
+      <div class="cq-badge">${esc(badge)}</div>
+      <h2 class="cq-title">${esc(chapter.title)}</h2>
+      <p class="cq-lore">${esc(chapter.body)}</p>
+      <div class="cq-foot">
+        <button class="cq-btn">CONTINUE</button>
+        <span class="cq-hint">Enter / Esc</span>
+      </div>
+    </div>`
+  document.body.appendChild(el)
+  overlayEl = el
+
+  const close = () => {
+    hideOverlay()
+    onClose?.()
+  }
+  el.querySelector('.cq-btn').addEventListener('click', close)
+  keyHandler = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      close()
+    }
+  }
+  window.addEventListener('keydown', keyHandler, true)
+  el.querySelector('.cq-btn').focus()
+}
+
+// The Chronicle: every chapter, with locked ones masked until that floor's warden wakes.
+export function showChronicle(chapters, unlocked, onClose, badge = 'THE CHRONICLE') {
+  ensureStyles()
+  hideOverlay()
+
+  const have = new Set(unlocked || [])
+  const items = chapters
+    .map((c) => {
+      if (have.has(c.floor)) {
+        return `<div class="cq-chron-item"><h3 class="cq-chron-title">${esc(c.title)}</h3>
+          <p class="cq-chron-body">${esc(c.body)}</p></div>`
+      }
+      return `<div class="cq-chron-item cq-chron-locked"><h3 class="cq-chron-title">??? · sealed</h3>
+        <p class="cq-chron-body locked">Awaken the warden on floor ${c.floor} to reveal this chapter.</p></div>`
+    })
+    .join('')
+
+  const el = document.createElement('div')
+  el.className = 'cq-overlay'
+  el.innerHTML = `
+    <div class="cq-card" role="dialog" aria-modal="true">
+      <div class="cq-badge">${esc(badge)}</div>
+      <h2 class="cq-title">OBSIDIAN RUINS</h2>
+      ${items}
+      <div class="cq-foot">
+        <button class="cq-btn">CLOSE</button>
         <span class="cq-hint">Enter / Esc</span>
       </div>
     </div>`

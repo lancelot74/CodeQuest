@@ -11,6 +11,7 @@ import { ensureHuntLights, LIGHT_RADIUS, SMALL_LIGHT, TORCH_LIGHT } from '../uti
 import { HEROES } from './NightHunt.js'
 import { generateFloor } from '../dungeon/FloorGen.js'
 import Minimap from '../dungeon/Minimap.js'
+import { showLorePanel } from '../ui/domOverlay.js'
 
 // ============================================================================
 // DUNGEON CRAWL — Night Hunt's "Challenge" mode (v2: room-by-room).
@@ -71,6 +72,43 @@ const FLOORS = [
   { name: "THE GUARDIAN'S GATE", boss: 'gargoyle', hunters: [['demon', 'sight'], ['mage', 'hearing'], ['ooze', 'sight']] },
 ]
 
+// Floor render: the molten tile repeated large so cooled plates read big + the lava grid
+// stays sparse. Doors grind open within OPEN and shut past CLOSE (hysteresis vs flapping).
+const FLOOR_TILE_SCALE = 1.1
+const DOOR_OPEN_DIST = 72
+const DOOR_CLOSE_DIST = 120
+const KEYSTONE_RADIUS = 30
+const STATUE_RADIUS = 58
+
+// The Obsidian Ruins, one chapter per floor told by the warden statues — building to the
+// Gargoyle. Endless floors (>4) have no warden and no chapter.
+export const DUNGEON_LORE = [
+  {
+    floor: 1,
+    title: 'I · The Forge That Fell',
+    body:
+      'Once this was Emberhold, a forge-temple where smiths bound fire into stone. They carved wardens to keep the deep gate shut — patient statues, each cradling a sigil. You stand at the threshold. The first of them still waits.',
+  },
+  {
+    floor: 2,
+    title: 'II · The Pact of Ash',
+    body:
+      'The smiths feared what slept below: a heart of living fire they could not quench, only cage. So they struck a pact — their own souls poured into the wardens, in exchange for the seal holding one age more. These halls still remember their whispers.',
+  },
+  {
+    floor: 3,
+    title: 'III · The Seal Weakens',
+    body:
+      'Age upon age the fire pressed upward and the sigils dimmed. The smiths are dust now; only the wardens keep the vow. Each keystone you return rekindles one for a breath. Feel the heat rising through the floor? The cage is failing.',
+  },
+  {
+    floor: 4,
+    title: 'IV · The Last Warden',
+    body:
+      'The greatest of them they named the Gargoyle — wrought to be the final lock should every other break. It has waited so long in the dark that it knows neither friend nor thief. Wake the last warden if you dare. Beyond it, the fire; beyond the fire, the way down.',
+  },
+]
+
 export default class DungeonCrawl extends Phaser.Scene {
   constructor() {
     super('DungeonCrawl')
@@ -109,6 +147,13 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.stealthRoom = null
     this.charm = false // a one-hit "lantern charm" from the treasure room
     this.treasurePickup = null
+    // the sealed-warden side-track (Obsidian Ruins lore)
+    this.doors = new Map()
+    this.statue = null
+    this.keystone = null
+    this.keystoneHeld = false
+    this.loreOpen = false
+    this._prevInteract = false
     this.hivemindOn = false
     // hunter-power multipliers Hunter.js reads
     this.senseRangeMul = 1
@@ -165,12 +210,12 @@ export default class DungeonCrawl extends Phaser.Scene {
     const combats = [...this.floorData.rooms.values()].filter((r) => r.type === 'combat')
     if (combats.length) Phaser.Utils.Array.GetRandom(combats).type = 'stealth'
 
-    // floor + walls per room, then the molten cracks (Obsidian Ruins skin)
-    const floorG = this.add.graphics().setDepth(0)
-    for (const r of this.floorData.rooms.values()) this.drawRoomFloor(floorG, r)
+    // generated molten floor + walls + props per room; then the stone doors + warden gate
+    for (const r of this.floorData.rooms.values()) this.drawRoomFloor(r)
     for (const r of this.floorData.rooms.values()) this.buildRoomWalls(r)
-    for (const r of this.floorData.rooms.values()) this.addMoltenCracks(r)
     for (const r of this.floorData.rooms.values()) this.placeProps(r)
+    this.buildDoors()
+    this.placeWarden()
   }
 
   // Scatter ancient set pieces per room — cover (obelisk/statue) + decor (altar/
@@ -230,48 +275,16 @@ export default class DungeonCrawl extends Phaser.Scene {
     }
   }
 
-  drawRoomFloor(g, room) {
+  drawRoomFloor(room) {
     const b = room.bounds
-    // black volcanic flagstone
-    g.fillStyle(0x18121c, 1).fillRect(b.x, b.y, b.width, b.height)
-    g.lineStyle(1, 0x0f0a12, 1)
-    for (let c = 0; c <= ROOM_COLS; c++) g.lineBetween(b.x + c * TILE, b.y, b.x + c * TILE, b.bottom)
-    for (let rr = 0; rr <= ROOM_ROWS; rr++) g.lineBetween(b.x, b.y + rr * TILE, b.right, b.y + rr * TILE)
-    for (let i = 0; i < 30; i++) {
-      const c = Phaser.Math.Between(0, ROOM_COLS - 1)
-      const rr = Phaser.Math.Between(0, ROOM_ROWS - 1)
-      g.fillStyle(0x140e18, 1).fillRect(b.x + c * TILE + 1, b.y + rr * TILE + 1, TILE - 2, TILE - 2)
-    }
-    this.add.rectangle(b.x, b.y, b.width, b.height, 0x080410, 0.4).setOrigin(0, 0).setDepth(1)
-  }
-
-  // A few glowing molten cracks per room, faintly piercing the dark + pulsing.
-  addMoltenCracks(room) {
-    const b = room.bounds
-    const n = Phaser.Math.Between(3, 5)
-    for (let i = 0; i < n; i++) {
-      const g = this.add.graphics().setDepth(950)
-      let x = Phaser.Math.Between(b.x + 36, b.right - 36)
-      let y = Phaser.Math.Between(b.y + 36, b.bottom - 36)
-      const pts = [[x, y]]
-      const segs = Phaser.Math.Between(3, 6)
-      for (let s = 0; s < segs; s++) {
-        x += Phaser.Math.Between(-26, 26)
-        y += Phaser.Math.Between(-26, 26)
-        pts.push([x, y])
-      }
-      const stroke = (width, color, alpha) => {
-        g.lineStyle(width, color, alpha)
-        g.beginPath()
-        g.moveTo(pts[0][0], pts[0][1])
-        for (const pp of pts) g.lineTo(pp[0], pp[1])
-        g.strokePath()
-      }
-      stroke(5, 0xff5a2a, 0.1) // soft glow
-      stroke(1.5, 0xff8a4a, 0.55) // bright core
-      g.setAlpha(0.5)
-      this.tweens.add({ targets: g, alpha: 0.95, yoyo: true, repeat: -1, duration: Phaser.Math.Between(900, 1700), ease: 'Sine.easeInOut' })
-    }
+    // generated molten flagstone, repeated large so the lava grid reads sparse
+    this.add
+      .tileSprite(b.x, b.y, b.width, b.height, 'dungeon-floor')
+      .setOrigin(0, 0)
+      .setTileScale(FLOOR_TILE_SCALE)
+      .setDepth(0)
+    // a faint dark wash for depth + to keep the lava from reading too hot under the fog
+    this.add.rectangle(b.x, b.y, b.width, b.height, 0x080410, 0.28).setOrigin(0, 0).setDepth(1)
   }
 
   // Solid wall along each edge, leaving a centred gap where a door connects.
@@ -560,6 +573,223 @@ export default class DungeonCrawl extends Phaser.Scene {
     }
   }
 
+  // ---- stone doors ----------------------------------------------------------
+  // One carved door per physical doorway. Gaps are created once per adjacent room at the
+  // same world point, so dedupe by position; every room keeps a list for seal/unseal.
+  buildDoors() {
+    for (const room of this.floorData.rooms.values()) {
+      room.doorObjs = []
+      for (const g of room.doorGaps) {
+        const key = `${Math.round(g.cx)}|${Math.round(g.cy)}`
+        let door = this.doors.get(key)
+        if (!door) {
+          door = this.makeDoor(g)
+          this.doors.set(key, door)
+        }
+        room.doorObjs.push(door)
+      }
+    }
+  }
+
+  makeDoor(g) {
+    const horizontal = g.w > g.h // opening runs left-right → leaves slide sideways
+    const fill = 0x2a2030
+    const stroke = 0x3a2c38
+    const depth = g.cy + 2
+    const door = { cx: g.cx, cy: g.cy, horizontal, open: false, sealed: false, leaves: [] }
+    if (horizontal) {
+      const lw = g.w / 2
+      const left = this.add.rectangle(g.cx - lw / 2, g.cy, lw, g.h, fill).setDepth(depth).setStrokeStyle(1, stroke, 0.8)
+      const right = this.add.rectangle(g.cx + lw / 2, g.cy, lw, g.h, fill).setDepth(depth).setStrokeStyle(1, stroke, 0.8)
+      door.leaves = [
+        { spr: left, shut: g.cx - lw / 2, ajar: g.cx - g.w / 2 - lw / 2 },
+        { spr: right, shut: g.cx + lw / 2, ajar: g.cx + g.w / 2 + lw / 2 },
+      ]
+    } else {
+      const lh = g.h / 2
+      const top = this.add.rectangle(g.cx, g.cy - lh / 2, g.w, lh, fill).setDepth(depth).setStrokeStyle(1, stroke, 0.8)
+      const bot = this.add.rectangle(g.cx, g.cy + lh / 2, g.w, lh, fill).setDepth(depth).setStrokeStyle(1, stroke, 0.8)
+      door.leaves = [
+        { spr: top, shut: g.cy - lh / 2, ajar: g.cy - g.h / 2 - lh / 2 },
+        { spr: bot, shut: g.cy + lh / 2, ajar: g.cy + g.h / 2 + lh / 2 },
+      ]
+    }
+    door.rune = this.add.rectangle(g.cx, g.cy, horizontal ? g.w * 0.5 : g.w, horizontal ? g.h : g.h * 0.5, 0xff5a2a, 1).setDepth(depth + 1).setAlpha(0)
+    const body = this.add.rectangle(g.cx, g.cy, g.w, g.h, 0x000000, 0).setDepth(depth)
+    this.physics.add.existing(body, true)
+    body.body.enable = true // starts shut; proximity opens it
+    door.body = body
+    this.wallZones.push(body)
+    this.applyLeaves(door, false) // park the leaves shut
+    return door
+  }
+
+  applyLeaves(door, open) {
+    for (const lf of door.leaves) {
+      const v = open ? lf.ajar : lf.shut
+      if (door.horizontal) lf.spr.x = v
+      else lf.spr.y = v
+    }
+  }
+
+  setDoorOpen(door, open, animate = true) {
+    if (door.open === open) return
+    door.open = open
+    door.body.body.enable = !open
+    for (const lf of door.leaves) {
+      const v = open ? lf.ajar : lf.shut
+      if (animate) this.tweens.add({ targets: lf.spr, ...(door.horizontal ? { x: v } : { y: v }), duration: 240, ease: 'Quad.easeInOut' })
+      else if (door.horizontal) lf.spr.x = v
+      else lf.spr.y = v
+    }
+    if (animate) {
+      Audio.play(this, SFX.heavy, { volume: 0.3, rate: 0.65 })
+      CombatSystem.puff(this, door.cx, door.cy, 0x6a5a52, door.cy + 2)
+    }
+  }
+
+  setDoorSealed(door, sealed) {
+    door.sealed = sealed
+    if (sealed) {
+      this.setDoorOpen(door, false, true)
+      door.runeTween?.stop()
+      door.rune.setAlpha(0.85)
+      door.runeTween = this.tweens.add({ targets: door.rune, alpha: 0.35, yoyo: true, repeat: -1, duration: 720, ease: 'Sine.easeInOut' })
+    } else {
+      door.runeTween?.stop()
+      door.runeTween = null
+      door.rune.setAlpha(0)
+      // proximity (updateDoors) reopens it once the player is near
+    }
+  }
+
+  // Doors grind open near the player and shut again past CLOSE; sealed ones stay locked.
+  updateDoors() {
+    if (!this.doors.size) return
+    for (const door of this.doors.values()) {
+      if (door.sealed) continue
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, door.cx, door.cy)
+      if (!door.open && d < DOOR_OPEN_DIST) this.setDoorOpen(door, true, true)
+      else if (door.open && d > DOOR_CLOSE_DIST) this.setDoorOpen(door, false, true)
+    }
+  }
+
+  // ---- sealed warden (lore side-track) --------------------------------------
+  // A dormant statue guards each floor's start room; a single hidden Sigil Shard wakes it
+  // for a chapter of the ruins' story + a charm. Optional — never gates the descent.
+  placeWarden() {
+    if (this.floor > FLOORS.length) return // endless floors have no warden / chapter
+    const startId = this.floorData.startId
+    const startRoom = this.floorData.rooms.get(startId)
+    const sb = startRoom.bounds
+    const sx = sb.centerX
+    const sy = sb.y + 100
+    const img = this.add.image(sx, sy, 'dprop-statue').setOrigin(0.5, 0.92).setScale(0.62).setDepth(sy)
+    const mark = this.add.ellipse(sx, sy - 30, 15, 15, 0x6a7cff, 0.16).setDepth(sy + 1)
+    this.tweens.add({ targets: mark, alpha: 0.34, yoyo: true, repeat: -1, duration: 1300, ease: 'Sine.easeInOut' })
+    const col = this.add.rectangle(sx, sy - 6, img.displayWidth * 0.5, 12, 0x000000, 0).setVisible(false)
+    this.physics.add.existing(col, true)
+    this.wallZones.push(col)
+    this.wallRects.push(new Phaser.Geom.Rectangle(sx - img.displayWidth * 0.3, sy - img.displayHeight * 0.7, img.displayWidth * 0.6, img.displayHeight * 0.6))
+    this.statue = { img, mark, x: sx, y: sy - 26, awakened: false }
+
+    // keystone: the room farthest (grid distance) from start, never the boss room
+    let far = null
+    let fd = -1
+    for (const [id, r] of this.floorData.rooms) {
+      if (id === startId || r.type === 'boss') continue
+      const dd = Math.abs(r.gx - startRoom.gx) + Math.abs(r.gy - startRoom.gy)
+      if (dd > fd) {
+        fd = dd
+        far = r
+      }
+    }
+    if (!far) {
+      for (const [id, r] of this.floorData.rooms) {
+        if (id !== startId) {
+          far = r
+          break
+        }
+      }
+    }
+    if (!far) return
+    const kb = far.bounds
+    const kx = kb.centerX
+    const ky = kb.centerY - 22
+    const halo = this.add.ellipse(kx, ky, 26, 26, 0xffb24a, 0.22).setDepth(ky + 4)
+    const orb = this.add.star(kx, ky, 4, 5, 12, 0xffd27f, 1).setStrokeStyle(1, 0xff7a3a, 1).setDepth(ky + 5)
+    this.tweens.add({ targets: [orb, halo], y: ky - 6, yoyo: true, repeat: -1, duration: 780, ease: 'Sine.easeInOut' })
+    this.tweens.add({ targets: orb, angle: 360, repeat: -1, duration: 6000 })
+    this.keystone = { orb, halo, x: kx, y: ky, held: false }
+  }
+
+  checkKeystone() {
+    const k = this.keystone
+    if (!k || k.held) return
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, k.x, k.y) < KEYSTONE_RADIUS) {
+      k.held = true
+      this.keystoneHeld = true
+      this.tweens.add({ targets: [k.orb, k.halo], scale: 2, alpha: 0, duration: 320, onComplete: () => { k.orb.destroy(); k.halo.destroy() } })
+      Audio.play(this, SFX.levelUp, { volume: 0.7 })
+      this.flashBanner('the Sigil Shard — bring it to the warden', '#ffd27f')
+    }
+  }
+
+  checkStatue() {
+    const s = this.statue
+    if (!s) return
+    const pressed = this.keys.E.isDown || TouchState.attackH
+    const edge = pressed && !this._prevInteract
+    this._prevInteract = pressed
+    if (!edge) return
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, s.x, s.y) > STATUE_RADIUS) return
+    const chapter = DUNGEON_LORE.find((c) => c.floor === this.floor)
+    if (s.awakened) {
+      if (chapter) this.openLore(chapter)
+    } else if (!this.keystoneHeld) {
+      this.flashBanner('the warden is sealed — a keystone lies in the deep', '#9aa8ff')
+    } else {
+      this.awakenStatue(chapter)
+    }
+  }
+
+  awakenStatue(chapter) {
+    const s = this.statue
+    s.awakened = true
+    this.keystoneHeld = false
+    const ex = s.img.x
+    const eyeY = s.img.y - s.img.displayHeight * 0.6
+    for (const dx of [-6, 6]) {
+      const eye = this.add.ellipse(ex + dx, eyeY, 3, 4, 0xfff0b0, 0).setDepth(s.img.depth + 2)
+      this.tweens.add({ targets: eye, alpha: 1, duration: 500, ease: 'Quad.easeIn' })
+      this.tweens.add({ targets: eye, scaleX: 1.4, scaleY: 1.4, yoyo: true, repeat: -1, delay: 500, duration: 900, ease: 'Sine.easeInOut' })
+    }
+    s.img.setTint(0xffd9a0)
+    this.tweens.add({ targets: s.mark, alpha: 0, duration: 400, onComplete: () => s.mark.destroy() })
+    const glow = this.add.ellipse(ex, s.img.y - 24, 40, 40, 0xff7a3a, 0).setDepth(s.img.depth + 1)
+    this.tweens.add({ targets: glow, alpha: 0.4, yoyo: true, repeat: -1, duration: 1100, ease: 'Sine.easeInOut' })
+    for (let i = 0; i < 8; i++) {
+      this.time.delayedCall(i * 90, () => CombatSystem.puff(this, ex + Phaser.Math.Between(-12, 12), s.img.y - 20, 0xff9a4a, s.img.depth + 3))
+    }
+    this.cameras.main.flash(260, 60, 30, 10)
+    this.cameras.main.shake(220, 0.006)
+    Audio.play(this, SFX.levelUp, { volume: 0.8 })
+    Audio.play(this, SFX.heavy, { volume: 0.4, rate: 0.6 })
+    this.charm = true // the carrot — a lantern charm (this mode has no HP)
+    const ch = SaveSystem.data.challenge
+    ch.loreUnlocked = ch.loreUnlocked || []
+    if (!ch.loreUnlocked.includes(this.floor)) ch.loreUnlocked.push(this.floor)
+    SaveSystem.save()
+    this.flashBanner('the warden wakes — a charm is yours', '#ffd27f')
+    this.time.delayedCall(750, () => { if (chapter) this.openLore(chapter) })
+  }
+
+  openLore(chapter) {
+    this.loreOpen = true
+    this.player.body.setVelocity(0, 0)
+    showLorePanel(chapter, () => { this.loreOpen = false }, `THE WARDEN · FLOOR ${this.floor}`)
+  }
+
   startCombat(room) {
     this.activeCombat = room
     setUiMood(this, 'danger')
@@ -583,23 +813,11 @@ export default class DungeonCrawl extends Phaser.Scene {
   }
 
   sealRoom(room) {
-    room.seals = []
-    for (const g of room.doorGaps) {
-      const rect = this.add.rectangle(g.cx, g.cy, g.w, g.h, 0x2a2030).setDepth(g.cy)
-      rect.setStrokeStyle(2, 0xff5a2a, 0.7)
-      this.physics.add.existing(rect, true)
-      this.wallZones.push(rect)
-      room.seals.push(rect)
-    }
+    for (const door of room.doorObjs || []) this.setDoorSealed(door, true)
   }
 
   unsealRoom(room) {
-    for (const s of room.seals || []) {
-      const i = this.wallZones.indexOf(s)
-      if (i >= 0) this.wallZones.splice(i, 1)
-      s.destroy()
-    }
-    room.seals = []
+    for (const door of room.doorObjs || []) this.setDoorSealed(door, false)
   }
 
   checkCombatClear() {
@@ -1026,7 +1244,7 @@ export default class DungeonCrawl extends Phaser.Scene {
   updateHud() {
     this.hudFloor.setText(`FLOOR ${this.floor}`)
     this.hudBest.setText(`deepest: ${SaveSystem.data.challenge.bestDepth}`)
-    this.hudCharm.setText(this.charm ? '✦ charm ready' : '')
+    this.hudCharm.setText(this.charm ? '✦ charm ready' : this.keystoneHeld ? '◆ sigil shard' : '')
     this.hudHint.setText(
       this.phase === 'boss'
         ? 'ATK: strike  ·  GRAB: catch + hurl'
@@ -1062,10 +1280,15 @@ export default class DungeonCrawl extends Phaser.Scene {
   update(time, delta) {
     const dt = delta / 1000
     if (!this.player) return
+    if (this.loreOpen) {
+      this.player.body.setVelocity(0, 0)
+      return
+    }
     this.handlePlayer(dt, time)
     if (!this.gameOver) {
       for (const h of this.hunters) h.think(dt)
       this.updateRoom()
+      this.updateDoors()
       this.handleMelee(dt)
       this.checkTreasure()
       if (this.phase === 'boss') {
@@ -1074,6 +1297,8 @@ export default class DungeonCrawl extends Phaser.Scene {
         this.updateProjectiles(dt)
       } else {
         this.checkCombatClear()
+        this.checkKeystone()
+        this.checkStatue()
       }
       if (this.phase === 'cleared') this.checkStairs()
     }

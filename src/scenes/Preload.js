@@ -87,6 +87,8 @@ export default class PreloadScene extends Phaser.Scene {
     for (const p of ['obelisk', 'brazier', 'statue', 'altar', 'rubble']) {
       this.load.image(`dprop-${p}`, `assets/game/dungeon/${p}.png`)
     }
+    // Molten flagstone floor — generated tile, repeated large so the lava grid is sparse.
+    this.load.image('dungeon-floor', 'assets/game/dungeon/floor-molten.png')
 
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).

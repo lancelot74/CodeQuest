@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config.js'
 import { nightBackdrop, button, pixelText, uiPanel, drawSenseIcon, ensureGlowTexture } from '../ui/widgets.js'
 import { SENSES } from '../systems/Hunter.js'
 import { SaveSystem } from '../systems/SaveSystem.js'
+import { showChronicle } from '../ui/domOverlay.js'
+import { DUNGEON_LORE } from './DungeonCrawl.js'
 
 // Hero roster shared with the mode briefing pages. The four animated platformer
 // heroes work in every mode; Knight and Golem are single-frame hunt-pack skins
@@ -99,5 +101,8 @@ export default class GameSelectScene extends Phaser.Scene {
     hit.on('pointerover', () => bg.setTint(0xd8b0b0))
     hit.on('pointerout', () => bg.setTint(0x8b6b6b))
     hit.on('pointerup', () => this.scene.start('DungeonCrawl'))
+
+    // The Chronicle — read whatever warden lore you've unlocked across runs.
+    button(this, cx, cy + 60, 'CHRONICLE ▸', () => showChronicle(DUNGEON_LORE, (SaveSystem.data.challenge || {}).loreUnlocked || []), { size: 7 })
   }
 }
