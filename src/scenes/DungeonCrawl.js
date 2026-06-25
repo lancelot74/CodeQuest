@@ -128,7 +128,10 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.faceY = 0
     this.stamina = STAM_MAX
     this.exhausted = false
-    this.hasTorch = true // the Wanderer's lantern is always lit
+    this.hasTorch = true // tracks the lit lantern; the lamp can be blown out + relit
+    this.lampOn = true
+    this.lampBusy = false
+    this._prevLamp = false
     this.playerMoving = false
     this.playerLoudness = 0
     this.playerMoveFactor = 0
@@ -182,7 +185,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.buildFog()
     this.buildHud()
 
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,SPACE,J,TAB,M,UP,DOWN,LEFT,RIGHT')
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,SHIFT,E,F,SPACE,J,TAB,M,UP,DOWN,LEFT,RIGHT')
     this.input.keyboard.addCapture('TAB')
     showTouchControls({ jump: 'RUN', attack: 'ATK', heavy: 'GRAB' })
     this.events.once('shutdown', () => hideTouchControls())
@@ -844,6 +847,14 @@ export default class DungeonCrawl extends Phaser.Scene {
       this.player.body.setVelocity(0, 0)
       return
     }
+    if (this.lampBusy) {
+      // frozen mid blow-out / relight — keep the lamp anim playing, just hold position
+      this.player.body.setVelocity(0, 0)
+      this.player.setDepth(this.player.y)
+      this.playerShadow.setPosition(this.player.x, this.player.y + this.player.displayHeight * 0.22).setDepth(this.player.y - 1)
+      this.carryFlame.setPosition(this.player.x + 7, this.player.y - this.player.displayHeight * 0.5).setDepth(this.player.y + 1)
+      return
+    }
     const k = this.keys
     const t = TouchState
     let ax = (k.D.isDown || k.RIGHT.isDown || t.right ? 1 : 0) - (k.A.isDown || k.LEFT.isDown || t.left ? 1 : 0)
@@ -903,6 +914,62 @@ export default class DungeonCrawl extends Phaser.Scene {
       .setScale(1, 1 + 0.18 * Math.sin(time / 110))
   }
 
+  // ---- lamp: blow out (fast) / relight (slow) -------------------------------
+  // Off = nearly blind, but partial concealment: shorter sight/hearing, slower to be
+  // noticed, and the floor boss half-loses you. A committed action — you're frozen while
+  // it plays, so relighting in a fight is a real risk.
+  handleLamp() {
+    const pressed = this.keys.F.isDown
+    const edge = pressed && !this._prevLamp
+    this._prevLamp = pressed
+    if (!edge || this.lampBusy) return
+    if (this.lampOn) this.blowOut()
+    else this.relight()
+  }
+
+  blowOut() {
+    this.lampBusy = true
+    this.player.body.setVelocity(0, 0)
+    if (this.anims.exists(`${this.heroKey}-blow`)) this.player.play(`${this.heroKey}-blow`)
+    Audio.play(this, SFX.jump, { volume: 0.5, rate: 0.6 })
+    // the flame snuffs partway through: kill the light + glow, concealment kicks in
+    this.time.delayedCall(370, () => {
+      this.lampOn = false
+      this.hasTorch = false
+      this.carryFlame.setVisible(false)
+      this.player.setTint(0x4a5060) // unlit — the cloak now reads dark
+      this.applyLampConceal()
+      CombatSystem.puff(this, this.player.x + 7, this.player.y - this.player.displayHeight * 0.5, 0x2a2030, this.player.y + 2)
+    })
+    this.time.delayedCall(560, () => { this.lampBusy = false })
+  }
+
+  relight() {
+    this.lampBusy = true
+    this.player.body.setVelocity(0, 0)
+    if (this.anims.exists(`${this.heroKey}-relight`)) this.player.play(`${this.heroKey}-relight`)
+    Audio.play(this, SFX.clear, { volume: 0.4, rate: 1.3 })
+    // the lantern blooms back near the end of the slow relight
+    this.time.delayedCall(1040, () => {
+      this.lampOn = true
+      this.hasTorch = true
+      this.carryFlame.setVisible(true)
+      this.player.clearTint()
+      this.applyLampConceal()
+      Audio.play(this, SFX.levelUp, { volume: 0.4 })
+      CombatSystem.puff(this, this.player.x + 7, this.player.y - this.player.displayHeight * 0.5, 0xffd86b, this.player.y + 2)
+    })
+    this.time.delayedCall(1320, () => { this.lampBusy = false })
+  }
+
+  // Lamp off → partial concealment the Hunter AI reads (shorter senses, slower to notice).
+  applyLampConceal() {
+    const off = !this.lampOn
+    this.senseRangeMul = off ? 0.45 : 1
+    this.hearRangeMul = off ? 0.5 : 1
+    this.awareUpMul = off ? 0.5 : 1
+  }
+
   // ---- boss room ------------------------------------------------------------
   startBoss(room) {
     this.phase = 'boss'
@@ -942,7 +1009,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (b.state === 'hurl' || b.state === 'smash' || b.state === 'hurt') return
 
     const a = Math.atan2(this.player.y - b.y, this.player.x - b.x)
-    b.body.setVelocity(Math.cos(a) * 26, Math.sin(a) * 26)
+    const spd = this.lampOn ? 26 : 15 // a blown-out lamp leaves the boss half-blind
+    b.body.setVelocity(Math.cos(a) * spd, Math.sin(a) * spd)
 
     b.actT -= dt
     if (b.actT > 0) return
@@ -1007,7 +1075,8 @@ export default class DungeonCrawl extends Phaser.Scene {
 
   spawnRubble() {
     const b = this.boss
-    const a = Math.atan2(this.player.y - b.y, this.player.x - b.x)
+    // a blown-out lamp throws the boss's aim off
+    const a = Math.atan2(this.player.y - b.y, this.player.x - b.x) + (this.lampOn ? 0 : Phaser.Math.FloatBetween(-0.5, 0.5))
     const spr = this.makeProj(b.x, b.y - 10)
     spr.body.setVelocity(Math.cos(a) * RUBBLE_SPEED, Math.sin(a) * RUBBLE_SPEED)
     this.fireballs.push({ spr, catchable: true, thrown: false, ttl: 5 })
@@ -1244,7 +1313,10 @@ export default class DungeonCrawl extends Phaser.Scene {
     // anchor the lantern light on the hero's body (the lamp), not the feet — the sprite
     // origin sits low (0.78), so erasing at player.y pooled the light below the Wanderer
     const sy = this.player.y - this.player.displayHeight * 0.5 - cam.scrollY
-    this.fog.erase('dcrawl-light', sx - HERO_LIGHT, sy - HERO_LIGHT)
+    // lamp off → only a faint pool (nearly blind), the trade-off for the concealment
+    const lkey = this.lampOn ? 'dcrawl-light' : 'hunt-light-sm'
+    const lr = this.lampOn ? HERO_LIGHT : SMALL_LIGHT
+    this.fog.erase(lkey, sx - lr, sy - lr)
     for (const br of this.braziers) {
       this.fog.erase('hunt-torch-light', br.x - cam.scrollX - TORCH_LIGHT, br.y - cam.scrollY - TORCH_LIGHT)
     }
@@ -1266,7 +1338,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.hudCharm = this.fixUI(pixelText(this, 10, 40, '', 7, '#7cfc98').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
     // always-on controls legend so it's clear which key does what
     this.hudKeys = this.fixUI(
-      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 6, 'WASD move    SHIFT run    SPACE attack    E interact    TAB map', 6, '#8a93b0')
+      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 6, 'WASD move   SHIFT run   SPACE attack   E interact   F lamp   TAB map', 6, '#8a93b0')
         .setOrigin(0.5, 1)
         .setScrollFactor(0)
         .setDepth(11000)
@@ -1322,16 +1394,21 @@ export default class DungeonCrawl extends Phaser.Scene {
       for (const h of this.hunters) h.think(dt)
       this.updateRoom()
       this.updateDoors()
-      this.handleMelee(dt)
-      this.checkTreasure()
+      this.handleLamp()
+      if (!this.lampBusy) {
+        this.handleMelee(dt)
+        this.checkTreasure()
+      }
       if (this.phase === 'boss') {
         this.updateBoss(dt)
-        this.handleEmber(dt)
+        if (!this.lampBusy) this.handleEmber(dt)
         this.updateProjectiles(dt)
       } else {
         this.checkCombatClear()
-        this.checkKeystone()
-        this.checkStatue()
+        if (!this.lampBusy) {
+          this.checkKeystone()
+          this.checkStatue()
+        }
       }
       if (this.phase === 'cleared') this.checkStairs()
     }

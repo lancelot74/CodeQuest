@@ -39,6 +39,13 @@ export function createCharacterAnimations(scene) {
   if (scene.textures.exists('hunt-lantern-attack') && !scene.anims.exists('hunt-lantern-attack')) {
     scene.anims.create({ key: 'hunt-lantern-attack', frames: scene.anims.generateFrameNumbers('hunt-lantern-attack'), frameRate: 18, repeat: 0 })
   }
+  // lamp control (Dungeon Crawl) — blow out fast, relight slow; both play once + hold
+  if (scene.textures.exists('hunt-lantern-blow') && !scene.anims.exists('hunt-lantern-blow')) {
+    scene.anims.create({ key: 'hunt-lantern-blow', frames: scene.anims.generateFrameNumbers('hunt-lantern-blow'), frameRate: 16, repeat: 0 })
+  }
+  if (scene.textures.exists('hunt-lantern-relight') && !scene.anims.exists('hunt-lantern-relight')) {
+    scene.anims.create({ key: 'hunt-lantern-relight', frames: scene.anims.generateFrameNumbers('hunt-lantern-relight'), frameRate: 9, repeat: 0 })
+  }
 }
 
 // Enemy animations (marsh creatures: Ooze, Demon, Mage). Built once, like the
