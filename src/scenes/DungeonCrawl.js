@@ -242,7 +242,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     const bp = this.propSpot(room, used)
     if (bp) {
       used.push(bp)
-      this.placeProp(bp.x, bp.y, { key: 'dprop-brazier', scale: 0.5, light: true })
+      this.placeProp(bp.x, bp.y, { key: 'dprop-brazier', scale: 0.5, light: true, collide: true })
     }
   }
 
@@ -264,7 +264,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     if (d.collide) {
       const w = img.displayWidth
       const h = img.displayHeight
-      const rect = this.add.rectangle(x, y - 6, w * 0.5, 12, 0x000000, 0).setVisible(false)
+      // a solid footprint at the base (not a thin strip) so the hero can't walk through it
+      const rect = this.add.rectangle(x, y - h * 0.12, w * 0.52, h * 0.3, 0x000000, 0).setVisible(false)
       this.physics.add.existing(rect, true)
       this.wallZones.push(rect)
       this.wallRects.push(new Phaser.Geom.Rectangle(x - w * 0.3, y - h * 0.7, w * 0.6, h * 0.6))
@@ -691,7 +692,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     const img = this.add.image(sx, sy, 'dprop-statue').setOrigin(0.5, 0.92).setScale(0.62).setDepth(sy)
     const mark = this.add.ellipse(sx, sy - 30, 15, 15, 0x6a7cff, 0.16).setDepth(sy + 1)
     this.tweens.add({ targets: mark, alpha: 0.34, yoyo: true, repeat: -1, duration: 1300, ease: 'Sine.easeInOut' })
-    const col = this.add.rectangle(sx, sy - 6, img.displayWidth * 0.5, 12, 0x000000, 0).setVisible(false)
+    const col = this.add.rectangle(sx, sy - img.displayHeight * 0.12, img.displayWidth * 0.52, img.displayHeight * 0.3, 0x000000, 0).setVisible(false)
     this.physics.add.existing(col, true)
     this.wallZones.push(col)
     this.wallRects.push(new Phaser.Geom.Rectangle(sx - img.displayWidth * 0.3, sy - img.displayHeight * 0.7, img.displayWidth * 0.6, img.displayHeight * 0.6))
