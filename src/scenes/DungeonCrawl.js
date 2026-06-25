@@ -373,9 +373,12 @@ export default class DungeonCrawl extends Phaser.Scene {
   // Counter the camera zoom for a screen-space (scrollFactor 0) UI object so it
   // keeps its intended screen position + size despite cameras.main.setZoom(ZOOM).
   fixUI(obj) {
-    const mx = GAME_WIDTH / 2
-    const my = GAME_HEIGHT / 2
-    obj.setPosition(mx + (obj.x - mx) / ZOOM, my + (obj.y - my) / ZOOM)
+    // The camera zoom scales screen-space (scrollFactor 0) UI from the TOP-LEFT, so an
+    // element placed at (x, y) renders at (x*ZOOM, y*ZOOM) at ZOOM size. Pre-divide both
+    // position and scale so it lands at its intended screen spot at true size. (The old
+    // centre-relative form fixed size but not position — same root cause as the light
+    // bug — so it shoved banners toward the lower-right and the legend off the bottom.)
+    obj.setPosition(obj.x / ZOOM, obj.y / ZOOM)
     obj.setScale(obj.scaleX / ZOOM, obj.scaleY / ZOOM)
     return obj
   }
