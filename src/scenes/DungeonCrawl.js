@@ -7,7 +7,7 @@ import { SaveSystem } from '../systems/SaveSystem.js'
 import { TouchState } from '../systems/TouchState.js'
 import { showTouchControls, hideTouchControls } from '../ui/touchControls.js'
 import Hunter from '../systems/Hunter.js'
-import { ensureHuntLights, LIGHT_RADIUS, SMALL_LIGHT, TORCH_LIGHT } from '../utils/lights.js'
+import { ensureHuntLights, SMALL_LIGHT, TORCH_LIGHT } from '../utils/lights.js'
 import { HEROES } from './NightHunt.js'
 import { generateFloor } from '../dungeon/FloorGen.js'
 import Minimap from '../dungeon/Minimap.js'
@@ -79,6 +79,8 @@ const DOOR_OPEN_DIST = 72
 const DOOR_CLOSE_DIST = 120
 const KEYSTONE_RADIUS = 30
 const STATUE_RADIUS = 58
+const HERO_LIGHT = 62 // the Wanderer's lantern pool — smaller + tighter than the shared LIGHT_RADIUS
+const WALL_TILE_SCALE = 0.8 // brick size on the textured stone walls
 
 // The Obsidian Ruins, one chapter per floor told by the warden statues — building to the
 // Gargoyle. Endless floors (>4) have no warden and no chapter.
@@ -176,6 +178,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.cameras.main.setZoom(ZOOM)
 
     ensureHuntLights(this)
+    this.buildHeroLight()
     this.buildFog()
     this.buildHud()
 
@@ -320,10 +323,11 @@ export default class DungeonCrawl extends Phaser.Scene {
     }
   }
 
-  // A static wall rectangle (collider + LOS blocker + simple stone visual).
+  // A static wall: a textured stone tile-sprite (visual) over an invisible collider that
+  // also blocks line-of-sight. The texture replaces the old flat colour fill.
   addWall(cx, cy, w, h) {
-    const rect = this.add.rectangle(cx, cy, w, h, 0x221826).setDepth(cy)
-    rect.setStrokeStyle(1, 0x3a2c38, 0.7)
+    this.add.tileSprite(cx, cy, w, h, 'dungeon-wall').setDepth(cy).setTileScale(WALL_TILE_SCALE)
+    const rect = this.add.rectangle(cx, cy, w, h, 0x000000, 0).setDepth(cy)
     this.physics.add.existing(rect, true)
     this.wallZones.push(rect)
     this.wallRects.push(new Phaser.Geom.Rectangle(cx - w / 2, cy - h / 2, w, h))
@@ -1202,6 +1206,26 @@ export default class DungeonCrawl extends Phaser.Scene {
     for (const btn of [retry, menu]) { btn.bg.setScrollFactor(0); btn.text.setScrollFactor(0) }
   }
 
+  // The Wanderer's lantern: a smaller, tightly-concentrated pool (bright core, quick
+  // falloff) built just for the dungeon so it reads as light on the hero, not a flood —
+  // without touching Night Hunt's shared 'hunt-light'.
+  buildHeroLight() {
+    const key = 'dcrawl-light'
+    if (this.textures.exists(key)) return
+    const r = HERO_LIGHT
+    const d = r * 2
+    const c = this.textures.createCanvas(key, d, d)
+    const ctx = c.getContext()
+    const g = ctx.createRadialGradient(r, r, r * 0.04, r, r, r)
+    g.addColorStop(0, 'rgba(255,255,255,1)')
+    g.addColorStop(0.4, 'rgba(255,255,255,0.9)')
+    g.addColorStop(0.72, 'rgba(255,255,255,0.4)')
+    g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, d, d)
+    c.refresh()
+  }
+
   // ---- fog ------------------------------------------------------------------
   buildFog() {
     this.fogColor = 0x05030a
@@ -1218,7 +1242,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     const oy = (GAME_HEIGHT / 2) * (ZOOM - 1) / ZOOM
     const sx = this.player.x - cam.scrollX + ox
     const sy = this.player.y - cam.scrollY + oy
-    this.fog.erase('hunt-light', sx - LIGHT_RADIUS, sy - LIGHT_RADIUS)
+    this.fog.erase('dcrawl-light', sx - HERO_LIGHT, sy - HERO_LIGHT)
     for (const br of this.braziers) {
       this.fog.erase('hunt-torch-light', br.x - cam.scrollX + ox - TORCH_LIGHT, br.y - cam.scrollY + oy - TORCH_LIGHT)
     }

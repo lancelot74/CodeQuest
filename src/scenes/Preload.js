@@ -89,6 +89,8 @@ export default class PreloadScene extends Phaser.Scene {
     }
     // Molten flagstone floor — generated tile, repeated large so the lava grid is sparse.
     this.load.image('dungeon-floor', 'assets/game/dungeon/floor-molten.png')
+    // Obsidian stone-block wall — generated tile, repeated along each wall segment.
+    this.load.image('dungeon-wall', 'assets/game/dungeon/wall-stone.png')
 
     // NIGHT HUNT (top-down stalker mode). Florest tileset is 24x24; hero/golem are
     // single-frame images. Props back the arena walls/objectives (no wall tiles exist).
