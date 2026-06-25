@@ -1241,7 +1241,9 @@ export default class DungeonCrawl extends Phaser.Scene {
     const ox = (GAME_WIDTH / 2) * (ZOOM - 1) / ZOOM
     const oy = (GAME_HEIGHT / 2) * (ZOOM - 1) / ZOOM
     const sx = this.player.x - cam.scrollX + ox
-    const sy = this.player.y - cam.scrollY + oy
+    // anchor the lantern light on the hero's body, not the feet — the sprite origin sits
+    // low (0.78), so erasing at player.y pooled the light below the Wanderer
+    const sy = this.player.y - this.player.displayHeight * 0.5 - cam.scrollY + oy
     this.fog.erase('dcrawl-light', sx - HERO_LIGHT, sy - HERO_LIGHT)
     for (const br of this.braziers) {
       this.fog.erase('hunt-torch-light', br.x - cam.scrollX + ox - TORCH_LIGHT, br.y - cam.scrollY + oy - TORCH_LIGHT)
@@ -1262,6 +1264,13 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.hudHint = this.fixUI(pixelText(this, 10, 24, '', 7, '#8ea0c0').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
     this.hudBest = this.fixUI(pixelText(this, GAME_WIDTH - 10, 8, '', 7, '#7c84a0').setOrigin(1, 0).setScrollFactor(0).setDepth(11000))
     this.hudCharm = this.fixUI(pixelText(this, 10, 40, '', 7, '#7cfc98').setOrigin(0, 0).setScrollFactor(0).setDepth(11000))
+    // always-on controls legend so it's clear which key does what
+    this.hudKeys = this.fixUI(
+      pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT - 6, 'WASD move    SHIFT run    SPACE attack    E interact    TAB map', 6, '#8a93b0')
+        .setOrigin(0.5, 1)
+        .setScrollFactor(0)
+        .setDepth(11000)
+    )
     this.bossHud = null
   }
 
