@@ -931,9 +931,10 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.lampBusy = true
     this.player.body.setVelocity(0, 0)
     if (this.anims.exists(`${this.heroKey}-blow`)) this.player.play(`${this.heroKey}-blow`)
-    Audio.play(this, SFX.jump, { volume: 0.5, rate: 0.6 })
-    // the flame snuffs partway through: kill the light + glow, concealment kicks in
-    this.time.delayedCall(370, () => {
+    Audio.play(this, SFX.jump, { volume: 0.6, rate: 0.5 })
+    // a pronounced gust of breath, then the flame dies — same slow pace as the relight
+    this.time.delayedCall(820, () => this.blowWind())
+    this.time.delayedCall(1040, () => {
       this.lampOn = false
       this.hasTorch = false
       this.carryFlame.setVisible(false)
@@ -941,7 +942,22 @@ export default class DungeonCrawl extends Phaser.Scene {
       this.applyLampConceal()
       CombatSystem.puff(this, this.player.x + 7, this.player.y - this.player.displayHeight * 0.5, 0x2a2030, this.player.y + 2)
     })
-    this.time.delayedCall(560, () => { this.lampBusy = false })
+    this.time.delayedCall(1320, () => { this.lampBusy = false })
+  }
+
+  // A visible gust toward the lantern + the flame guttering, so the blow reads clearly.
+  blowWind() {
+    const hx = this.player.x
+    const hy = this.player.y - this.player.displayHeight * 0.55
+    this.tweens.add({ targets: this.carryFlame, scaleX: 0.3, scaleY: 1.9, duration: 80, yoyo: true, repeat: 3 })
+    for (let i = 0; i < 8; i++) {
+      const w = this.add.ellipse(hx + 4, hy + Phaser.Math.Between(-7, 9), 10, 4, 0xdfeeff, 0).setDepth(this.player.y + 3)
+      this.tweens.add({
+        targets: w, x: hx + Phaser.Math.Between(34, 60), alpha: 0.8, scaleX: 3.4, scaleY: 1.3,
+        duration: 150, delay: i * 22, ease: 'Quad.easeOut',
+        onComplete: () => this.tweens.add({ targets: w, x: w.x + 16, alpha: 0, scaleX: 4.6, duration: 220, onComplete: () => w.destroy() }),
+      })
+    }
   }
 
   relight() {
@@ -956,10 +972,22 @@ export default class DungeonCrawl extends Phaser.Scene {
       this.carryFlame.setVisible(true)
       this.player.clearTint()
       this.applyLampConceal()
-      Audio.play(this, SFX.levelUp, { volume: 0.4 })
-      CombatSystem.puff(this, this.player.x + 7, this.player.y - this.player.displayHeight * 0.5, 0xffd86b, this.player.y + 2)
+      this.relightFlare()
+      Audio.play(this, SFX.levelUp, { volume: 0.5 })
     })
     this.time.delayedCall(1320, () => { this.lampBusy = false })
+  }
+
+  // A bright hot core + warm bloom (and a brief warm flash) as the lighter catches the
+  // lamp, so the moment the light returns is clearly noticed.
+  relightFlare() {
+    const fx = this.player.x + 7
+    const fy = this.player.y - this.player.displayHeight * 0.5
+    const core = this.add.ellipse(fx, fy, 7, 7, 0xffffff, 1).setDepth(this.player.y + 4)
+    this.tweens.add({ targets: core, scaleX: 3.5, scaleY: 3.5, alpha: 0, duration: 320, ease: 'Quad.easeOut', onComplete: () => core.destroy() })
+    const bloom = this.add.ellipse(fx, fy, 14, 14, 0xffd86b, 0.9).setDepth(this.player.y + 3)
+    this.tweens.add({ targets: bloom, scaleX: 7, scaleY: 7, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => bloom.destroy() })
+    this.cameras.main.flash(200, 120, 70, 25)
   }
 
   // Lamp off → partial concealment the Hunter AI reads (shorter senses, slower to notice).

@@ -41,7 +41,7 @@ export function createCharacterAnimations(scene) {
   }
   // lamp control (Dungeon Crawl) — blow out fast, relight slow; both play once + hold
   if (scene.textures.exists('hunt-lantern-blow') && !scene.anims.exists('hunt-lantern-blow')) {
-    scene.anims.create({ key: 'hunt-lantern-blow', frames: scene.anims.generateFrameNumbers('hunt-lantern-blow'), frameRate: 16, repeat: 0 })
+    scene.anims.create({ key: 'hunt-lantern-blow', frames: scene.anims.generateFrameNumbers('hunt-lantern-blow'), frameRate: 7, repeat: 0 })
   }
   if (scene.textures.exists('hunt-lantern-relight') && !scene.anims.exists('hunt-lantern-relight')) {
     scene.anims.create({ key: 'hunt-lantern-relight', frames: scene.anims.generateFrameNumbers('hunt-lantern-relight'), frameRate: 9, repeat: 0 })
