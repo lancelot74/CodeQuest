@@ -1236,24 +1236,23 @@ export default class DungeonCrawl extends Phaser.Scene {
     const cam = this.cameras.main
     this.fog.clear()
     this.fog.fill(this.fogColor, 1)
-    // the fog is a screen-space overlay scaled by the camera zoom around the screen
-    // centre, so light positions need this offset to land on the right world point
-    const ox = (GAME_WIDTH / 2) * (ZOOM - 1) / ZOOM
-    const oy = (GAME_HEIGHT / 2) * (ZOOM - 1) / ZOOM
-    const sx = this.player.x - cam.scrollX + ox
-    // anchor the lantern light on the hero's body, not the feet — the sprite origin sits
-    // low (0.78), so erasing at player.y pooled the light below the Wanderer
-    const sy = this.player.y - this.player.displayHeight * 0.5 - cam.scrollY + oy
+    // The fog is a screen-space overlay; the camera applies one zoom transform (same pivot)
+    // to everything it draws, so a light simply goes at (world - scroll). The earlier
+    // ZOOM-based offset was wrong — it shoved every pool to the hero's lower-right.
+    const sx = this.player.x - cam.scrollX
+    // anchor the lantern light on the hero's body (the lamp), not the feet — the sprite
+    // origin sits low (0.78), so erasing at player.y pooled the light below the Wanderer
+    const sy = this.player.y - this.player.displayHeight * 0.5 - cam.scrollY
     this.fog.erase('dcrawl-light', sx - HERO_LIGHT, sy - HERO_LIGHT)
     for (const br of this.braziers) {
-      this.fog.erase('hunt-torch-light', br.x - cam.scrollX + ox - TORCH_LIGHT, br.y - cam.scrollY + oy - TORCH_LIGHT)
+      this.fog.erase('hunt-torch-light', br.x - cam.scrollX - TORCH_LIGHT, br.y - cam.scrollY - TORCH_LIGHT)
     }
     if (this.boss && this.boss.state !== 'dead') {
-      this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX + ox - TORCH_LIGHT, this.boss.y - cam.scrollY + oy - TORCH_LIGHT)
+      this.fog.erase('hunt-torch-light', this.boss.x - cam.scrollX - TORCH_LIGHT, this.boss.y - cam.scrollY - TORCH_LIGHT)
     }
     for (const h of this.hunters) {
       if (h.mode === 'CHASE' || this.gameOver) {
-        this.fog.erase('hunt-light-sm', h.x - cam.scrollX + ox - SMALL_LIGHT, h.y - cam.scrollY + oy - SMALL_LIGHT)
+        this.fog.erase('hunt-light-sm', h.x - cam.scrollX - SMALL_LIGHT, h.y - cam.scrollY - SMALL_LIGHT)
       }
     }
   }
