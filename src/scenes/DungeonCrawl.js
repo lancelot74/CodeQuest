@@ -80,6 +80,7 @@ const DOOR_CLOSE_DIST = 120
 const KEYSTONE_RADIUS = 30
 const STATUE_RADIUS = 58
 const HERO_LIGHT = 62 // the Wanderer's lantern pool — smaller + tighter than the shared LIGHT_RADIUS
+const LAMP_OFF_LIGHT = 16 // a tiny residual pool when the lamp is blown out (nearly blind)
 const WALL_TILE_SCALE = 0.8 // brick size on the textured stone walls
 
 // The Obsidian Ruins, one chapter per floor told by the warden statues — building to the
@@ -1295,33 +1296,42 @@ export default class DungeonCrawl extends Phaser.Scene {
   showDeathOverlay(reason) {
     if (this._overlayShown) return
     this._overlayShown = true
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05060c, 0.72).setOrigin(0, 0).setScrollFactor(0).setDepth(12000)
-    pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 52, 'FALLEN', 26, '#e06a6a').setScrollFactor(0).setDepth(12001)
-    pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, reason || '', 8, '#cdd7ee').setScrollFactor(0).setDepth(12001)
-    pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 4, `floor ${this.floor}`, 8, '#8ea0c0').setScrollFactor(0).setDepth(12001)
+    // oversized so the dark wash always covers the screen under the camera zoom
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH * 3, GAME_HEIGHT * 3, 0x05060c, 0.8).setScrollFactor(0).setDepth(12000)
+    // fixUI keeps these at true screen size + position despite the zoom (same as the HUD)
+    this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 52, 'FALLEN', 26, '#e06a6a').setScrollFactor(0).setDepth(12001))
+    this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, reason || '', 8, '#cdd7ee').setScrollFactor(0).setDepth(12001))
+    this.fixUI(pixelText(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 4, `floor ${this.floor}`, 8, '#8ea0c0').setScrollFactor(0).setDepth(12001))
     const retry = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40, 'RETRY FLOOR', () => this.scene.restart({ floor: this.floor }), { width: 170, depth: 12001 })
     const menu = panelButton(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 78, 'MAIN MENU', () => this.scene.start('MainMenu'), { width: 170, depth: 12001 })
-    for (const btn of [retry, menu]) { btn.bg.setScrollFactor(0); btn.text.setScrollFactor(0) }
+    for (const btn of [retry, menu]) {
+      btn.bg.setScrollFactor(0)
+      btn.text.setScrollFactor(0)
+      this.fixUI(btn.bg)
+      this.fixUI(btn.text)
+    }
   }
 
   // The Wanderer's lantern: a smaller, tightly-concentrated pool (bright core, quick
   // falloff) built just for the dungeon so it reads as light on the hero, not a flood —
   // without touching Night Hunt's shared 'hunt-light'.
   buildHeroLight() {
-    const key = 'dcrawl-light'
-    if (this.textures.exists(key)) return
-    const r = HERO_LIGHT
-    const d = r * 2
-    const c = this.textures.createCanvas(key, d, d)
-    const ctx = c.getContext()
-    const g = ctx.createRadialGradient(r, r, r * 0.04, r, r, r)
-    g.addColorStop(0, 'rgba(255,255,255,1)')
-    g.addColorStop(0.4, 'rgba(255,255,255,0.9)')
-    g.addColorStop(0.72, 'rgba(255,255,255,0.4)')
-    g.addColorStop(1, 'rgba(255,255,255,0)')
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, d, d)
-    c.refresh()
+    const make = (key, r, peak) => {
+      if (this.textures.exists(key)) return
+      const d = r * 2
+      const c = this.textures.createCanvas(key, d, d)
+      const ctx = c.getContext()
+      const g = ctx.createRadialGradient(r, r, r * 0.04, r, r, r)
+      g.addColorStop(0, `rgba(255,255,255,${peak})`)
+      g.addColorStop(0.4, `rgba(255,255,255,${peak * 0.9})`)
+      g.addColorStop(0.72, `rgba(255,255,255,${peak * 0.4})`)
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, d, d)
+      c.refresh()
+    }
+    make('dcrawl-light', HERO_LIGHT, 1)
+    make('dcrawl-dim', LAMP_OFF_LIGHT, 0.85) // the faint pool while the lamp is blown out
   }
 
   // ---- fog ------------------------------------------------------------------
@@ -1342,8 +1352,8 @@ export default class DungeonCrawl extends Phaser.Scene {
     // origin sits low (0.78), so erasing at player.y pooled the light below the Wanderer
     const sy = this.player.y - this.player.displayHeight * 0.5 - cam.scrollY
     // lamp off → only a faint pool (nearly blind), the trade-off for the concealment
-    const lkey = this.lampOn ? 'dcrawl-light' : 'hunt-light-sm'
-    const lr = this.lampOn ? HERO_LIGHT : SMALL_LIGHT
+    const lkey = this.lampOn ? 'dcrawl-light' : 'dcrawl-dim'
+    const lr = this.lampOn ? HERO_LIGHT : LAMP_OFF_LIGHT
     this.fog.erase(lkey, sx - lr, sy - lr)
     for (const br of this.braziers) {
       this.fog.erase('hunt-torch-light', br.x - cam.scrollX - TORCH_LIGHT, br.y - cam.scrollY - TORCH_LIGHT)
