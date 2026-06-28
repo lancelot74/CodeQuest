@@ -72,6 +72,15 @@ const FLOORS = [
   { name: "THE GUARDIAN'S GATE", boss: 'gargoyle', hunters: [['demon', 'sight'], ['mage', 'hearing'], ['ooze', 'sight']] },
 ]
 
+// Dungeon Crawl reskins the roaming stalkers as molten "lesser kin" of the floor bosses,
+// so the whole bestiary matches. The shared Hunter SKINS stay green for Night Hunt; we
+// override per-hunter after spawn. demon->Ember Whelp, mage->Ash Acolyte, ooze->Magma Crawler.
+const MOLTEN_STALKER = {
+  demon: { kin: 'brute', scale: 0.46, body: [40, 30], origin: 0.78 },
+  mage: { kin: 'warlock', scale: 0.5, body: [30, 40], origin: 0.78 },
+  ooze: { kin: 'serpent', scale: 0.46, body: [42, 28], origin: 0.78 },
+}
+
 // Floor render: the molten tile repeated large so cooled plates read big + the lava grid
 // stays sparse. Doors grind open within OPEN and shut past CLOSE (hysteresis vs flapping).
 const FLOOR_TILE_SCALE = 1.1
@@ -415,6 +424,17 @@ export default class DungeonCrawl extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 0, y: t.y - 26 / ZOOM, duration: 1000, onComplete: () => t.destroy() })
   }
 
+  // Re-skin a freshly-spawned Hunter as the molten lesser-kin (Dungeon Crawl only — leaves
+  // the shared Night Hunt SKINS untouched). Plays the molten walk; death uses moltenKey.
+  applyMoltenStalker(hn) {
+    const m = MOLTEN_STALKER[hn.skinKey]
+    if (!m || !this.textures.exists(`${m.kin}-walk`)) return
+    hn.moltenKey = m.kin
+    hn.setOrigin(0.5, m.origin).setScale(m.scale).setTint(0xc69a86)
+    hn.setTexture(`${m.kin}-walk`).play(`${m.kin}-walk`)
+    hn.body.setSize(m.body[0], m.body[1])
+  }
+
   spawnHunterAttack(h) {
     const a = Math.atan2(this.player.y - h.y, this.player.x - h.x)
     h.body.setVelocity(Math.cos(a) * 220, Math.sin(a) * 220)
@@ -492,7 +512,7 @@ export default class DungeonCrawl extends Phaser.Scene {
     h.body.enable = false
     CombatSystem.puff(this, h.x, h.y - 6, silent ? 0x7cfc98 : 0xffe6a0, h.y + 1)
     Audio.play(this, SFX.enemyDie, { volume: 0.7, rate: silent ? 0.9 : 1.1 })
-    const deathKey = `${h.skinKey}-death`
+    const deathKey = `${h.moltenKey || h.skinKey}-death`
     if (this.anims.exists(deathKey)) {
       h.play(deathKey)
       h.once(`animationcomplete-${deathKey}`, () => h.destroy())
@@ -534,6 +554,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       const [skin, sense] = cfg.hunters[i % cfg.hunters.length]
       const p = this.randomPointInRoom(room)
       const hn = new Hunter(this, p.x, p.y, skin, sense)
+      this.applyMoltenStalker(hn)
       hn.hp = HUNTER_HP
       hn.room = room
       hn.mode = 'PATROL'
@@ -814,6 +835,7 @@ export default class DungeonCrawl extends Phaser.Scene {
       const [skin, sense] = cfg.hunters[i % cfg.hunters.length]
       const p = this.randomPointInRoom(room)
       const hn = new Hunter(this, p.x, p.y, skin, sense)
+      this.applyMoltenStalker(hn)
       hn.hp = HUNTER_HP
       hn.room = room
       hn.awareness = 0.9 // it's a fight — they engage fast

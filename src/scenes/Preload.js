@@ -80,7 +80,7 @@ export default class PreloadScene extends Phaser.Scene {
 
     // New animated dungeon bosses (96px) — all reuse the molten rubble projectile.
     for (const boss of ['brute', 'warlock', 'serpent']) {
-      for (const act of ['idle', 'hurl', 'hurt', 'death']) {
+      for (const act of ['idle', 'hurl', 'hurt', 'death', 'walk']) {
         this.load.spritesheet(`${boss}-${act}`, `assets/game/bosses/${boss}-${act}.png`, GARG)
       }
     }

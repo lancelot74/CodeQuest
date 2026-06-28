@@ -91,6 +91,8 @@ export function createEnemyAnimations(scene) {
     define(scene, `${boss}-death`, `${boss}-death`, 10, 0)
     define(scene, `${boss}-hurl`, `${boss}-hurl`, 12, 0)
     define(scene, `${boss}-hurt`, `${boss}-hurt`, 14, 0)
+    // walk loop — Dungeon Crawl reskins its roaming stalkers as molten lesser-kin
+    if (scene.textures.exists(`${boss}-walk`)) define(scene, `${boss}-walk`, `${boss}-walk`, 9, -1)
   }
 }
 
